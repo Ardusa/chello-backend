@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import os
 from fastapi import (
     FastAPI,
     WebSocket,
@@ -9,121 +10,85 @@ from fastapi import (
 )
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from enum import Enum
 from generate_DAG import generate_DAG
-from prioritization_engine import (
-    calculate_time_estimate,
-    calculate_time_of_completion,
-    calculate_efficiency,
-)
-from passlib.context import CryptContext
-from jose import JWTError, jwt
-from typing import Optional, List
-import base64
-import uvicorn
 
-SECRET_KEY = "CHELLO"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+from jose import JWTError, jwt
+import base64
+import json
+import models
 
 app = FastAPI()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# ! Authentication stuff
+SECRET_KEY = "CHELLO"
+ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
 class Token(BaseModel):
+    """Model to store access token and token type."""
+
     access_token: str
+    """Access token for authentication."""
     token_type: str
+    """Token type (Bearer)."""
 
 
-class TaskStatus(Enum):
-    """Working status of task."""
+EMPLOYEES_FILE = "employees.json"
+PROJECTS_DIR = "projects/"
 
-    OPEN = "OPEN"
-    """Task is open and ready to be started."""
-    IN_PROGRESS = "IN_PROGRESS"
-    """Task is currently being worked on."""
-    COMPLETED = "COMPLETED"
-    """Task has been completed."""
+# Ensure projects directory exists
+os.makedirs(PROJECTS_DIR, exist_ok=True)
 
 
-class Employee(BaseModel):
-    """Employee model to store employee details."""
-
-    id: str
-    """Unique identifier for the employee (username or employee ID)."""
-    full_name: str
-    """Full name of the employee."""
-    email: str
-    """Email address of the employee."""
-    position: Optional[int] = 1
-    """Position of the employee in the organization, 1 for base level, 2 for manager, 3 for admin."""
-    enabled: Optional[bool] = True
-    """Flag to enable or disable the employee account."""
-    efficiency_score: Optional[float] = 1.0  # Default efficiency score of 100%
-    """Efficiency score of the employee (default: 100%)."""
-    password: str = "password"
-    """Password for the employee account."""
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        self.password = pwd_context.hash(self.password)
+def load_employees():
+    try:
+        with open(EMPLOYEES_FILE, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
 
-# Task Model
-class Task(BaseModel):
-    """Task model to store task details."""
-
-    name: str
-    """Name of the task."""
-    description: str
-    """Description of the task."""
-    dependencies: List[str] = []
-    """List of tasks that this task depends on."""
-    subtasks: List[str] = []
-    """List of tasks that are completed only as part of this task."""
-    status: TaskStatus = TaskStatus.OPEN
-    """Current status of the task."""
-    start_date: Optional[datetime] = None
-    """Date when the task was started."""
-    estimated_hours: Optional[int] = None
-    """User estimated time required to complete the task."""
-    calculated_hours: Optional[timedelta] = None
-    """Calculated estimate of time required to complete the task."""
-    actual_hours: Optional[timedelta] = None
-    """Actual time taken to complete the task."""
-    end_date: Optional[datetime] = None
-    """Date when the task was completed."""
-    users_assigned: List[Employee] = []
-    """List of employees assigned to the task."""
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        if self.status is TaskStatus.COMPLETED:
-            self.actual_hours = self.end_date - self.start_date
-        if self.start_date is None:
-            self.start_date = datetime.now()
-        if self.calculated_hours is None:
-            self.calculated_hours = calculate_time_estimate(self).calculated_hours
-        if self.end_date is None:
-            self.end_date = None
+def save_employees(employees):
+    with open(EMPLOYEES_FILE, "w") as f:
+        json.dump(employees, f, indent=4)
 
 
-tasks: list[Task] = []
-"""Store tasks and dependencies (Initially empty, will be updated dynamically)"""
+def load_project(project_id):
+    try:
+        with open(f"{PROJECTS_DIR}{project_id}.json", "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
 
-# fake_users_db = {
-#     "ankur": {
-#         "username": "ankur",
-#         "password": pwd_context.hash("chello"),  # Store hashed password
-#     }
-# }
 
-employees: dict[str, Employee] = {
-    "ardusa": Employee(
+def save_project(project_id, project_data):
+    with open(f"{PROJECTS_DIR}{project_id}.json", "w") as f:
+        json.dump(project_data, f, indent=4)
+
+
+# Initialize default admin if empty
+employees = load_employees()
+if not employees:
+    admin = models.Employee(
+        id="admin",
+        full_name="Admin User",
+        email="admin@example.com",
+        position=3,
+        password="admin",
+    )
+    admin.hash_password()
+    employees[admin.id] = admin
+    save_employees(employees)
+
+print("Employee and Project JSON storage system initialized.")
+
+employees: dict[str, models.Employee] = {
+    "ardusa": models.Employee(
         id="ardusa", full_name="Ankur Desai", email="ardusa05@gmail.com", position=3
     ),
-    "school": Employee(
+    "school":models.Employee(
         id="school",
         full_name="Michigan State",
         email="desaia11@msu.edu",
@@ -132,10 +97,10 @@ employees: dict[str, Employee] = {
 }
 
 
-def authenticate_user(username: str, password: str):
-    user: Employee = employees.get(username)
-
-    if not user or not pwd_context.verify(password, user.password):
+def authenticate_user(employee_id: str, password: str):
+    employees = load_employees()
+    user = employees.get(employee_id)
+    if not user or not models.pwd_context.verify(password, user["password"]):
         return False
     return user
 
@@ -146,18 +111,48 @@ def create_access_token(data: dict, expires_delta: timedelta):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-
-@app.post("/token/", response_model=Token)
+@app.post("/token/")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
-        )
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=timedelta(minutes=30)
-    )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    access_token = create_access_token(data={"sub": user["id"]}, expires_delta=timedelta(minutes=30))
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/add_employee/")
+async def add_employee(employee_id: str, full_name: str, email: str, position: int, password: str, token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        admin_id = payload["sub"]
+        employees = load_employees()
+        if employees[admin_id]["position"] != 3:
+            raise HTTPException(status_code=403, detail="Only level 3 admins can add employees")
+        employees[employee_id] = {
+            "id": employee_id,
+            "full_name": full_name,
+            "email": email,
+            "position": position,
+            "password": models.pwd_context.hash(password),
+        }
+        save_employees(employees)
+        return {"message": "Employee added successfully"}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+@app.get("/get_projects/")
+async def get_projects(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        employee_id = payload["sub"]
+        employees = load_employees()
+        if employee_id not in employees:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        assigned_projects = [pid for pid in os.listdir(PROJECTS_DIR) if employee_id in load_project(pid).get("employees", [])]
+        return {"projects": assigned_projects}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
 @app.get("/protected/")
@@ -177,7 +172,7 @@ if __name__ == "__main__":
 
 
 @app.post("/create_task/")
-async def create_task(task: Task, token: str = Depends(oauth2_scheme)):
+async def create_task(task: models.Task, token: str = Depends(oauth2_scheme)):
     try:
         jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
@@ -234,12 +229,12 @@ async def generate_test_data(token: str = Depends(oauth2_scheme)):
             "description": task_description,
             "dependencies": test_dependencies.get(task_name, []),
             "start_date": datetime.now(),
-            "status": TaskStatus.OPEN,
+            "status": models.TaskStatus.OPEN,
         }
         tasks_list.append(task_data)
 
     for task_data in tasks_list:
-        task = Task(**task_data)
+        task = models.Task(**task_data)
         await create_task(task)
 
     return {"tasks": tasks}

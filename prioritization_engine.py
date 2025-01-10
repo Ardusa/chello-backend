@@ -1,7 +1,6 @@
-from main import Task
-from datetime import datetime, timedelta
+import models
 
-def calculate_time_estimate(task: Task) -> Task:
+def calculate_time_estimate(task: models.Task) -> models.Task:
     """
     Calculate the time required to complete a task based on the subtasks and their durations.
     """
@@ -13,7 +12,7 @@ def calculate_time_estimate(task: Task) -> Task:
         task.calculated_hours = sum(calculate_time_estimate(subtask).calculated_hours for subtask in task.subtasks)
 
     return task  # Allow chaining
-def calculate_time_of_completion(task: Task) -> Task:
+def calculate_time_of_completion(task: models.Task) -> models.Task:
     """
     Calculate the time of completion of a task based on the start date and the time required to complete the task.
     """
@@ -22,9 +21,9 @@ def calculate_time_of_completion(task: Task) -> Task:
     else:
         raise ValueError("Start date or end date is missing")
 
-def calculate_efficiency(task: Task) -> float:
+def calculate_efficiency(task: models.Task) -> float:
     """Calculate the efficiency of a task based on the estimated time and the actual time taken."""
     task.calculated_hours = calculate_time_estimate(task)
     
     calculate_time_of_completion(task)
-    return task. / estimated_time
+    return task.actual_hours / task.calculated_hours
