@@ -1,51 +1,115 @@
-from datetime import datetime, timedelta
-from pydantic import BaseModel
-from enum import Enum
-from typing import Optional, List
+import sqlite3
+from typing import Optional
+from datetime import datetime
 from passlib.context import CryptContext # type: ignore
-import numpy as np
-import xgboost as xgb
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sentence_transformers import SentenceTransformer
-# import sqlite3
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Load a pretrained sentence embedding model
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
+class Database:
+    def __init__(self, db_file="chello.db"):
+        self.db_file = db_file
 
-class TaskStatus(Enum):
-    """Working status of task."""
+    def connect(self):
+        return sqlite3.connect(self.db_file)
 
-    OPEN = "OPEN"
-    """Task is open and ready to be started."""
-    IN_PROGRESS = "IN_PROGRESS"
-    """Task is currently being worked on."""
-    COMPLETED = "COMPLETED"
-    """Task has been completed."""
+    def create_tables(self):
+        conn = self.connect()
+        cursor = conn.cursor()
+
+        # Create tables
+        cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS projects (
+            project_id TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            description TEXT,
+            start_date TEXT,
+            end_date TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS tasks (
+            task_id TEXT NOT NULL,
+            task_name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            status TEXT,
+            parent_task_id TEXT,
+            estimated_hours FLOAT,
+            actual_hours FLOAT,
+            start_date TEXT,
+            end_date TEXT,
+            project_id TEXT,
+            FOREIGN KEY (project_id) REFERENCES projects(project_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS task_dependencies (
+            task_id TEXT,
+            dependent_task_id INTEGER,
+            PRIMARY KEY (task_id, dependent_task_id),
+            FOREIGN KEY (task_id) REFERENCES tasks(task_id),
+            FOREIGN KEY (dependent_task_id) REFERENCES tasks(task_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS employee_assignments (
+            task_id TEXT,
+            employee_id TEXT,
+            assigned_date TEXT,
+            PRIMARY KEY (task_id, employee_id),
+            FOREIGN KEY (task_id) REFERENCES tasks(task_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS employees (
+            employee_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            password TEXT NOT NULL,
+            email TEXT NOT NULL,
+            authority_level INTEGER NOT NULL,
+            title TEXT NOT NULL
+        );
+        """)
+        conn.commit()
+        conn.close()
 
 
-class Employee(BaseModel):
-    """Employee model to store employee details."""
+class Task:
+    def __init__(self, task_id: str, description: str, project_id: str, status: str = "OPEN", parent_task_id: Optional[str] = None,
+                 estimated_hours: Optional[int] = None, actual_hours: Optional[int] = None,
+                 start_date: Optional[str] = None, end_date: Optional[str] = None):
+        self.task_id = task_id
+        self.description = description
+        self.project_id = project_id
+        self.status = status
+        self.parent_task_id = parent_task_id
+        self.estimated_hours = estimated_hours
+        self.actual_hours = actual_hours
+        self.start_date = start_date
+        self.end_date = end_date
 
-    id: str
-    """Unique identifier for the employee (username or employee ID)."""
-    full_name: str
-    """Full name of the employee."""
-    email: str
-    """Email address of the employee."""
-    position: Optional[int] = 1
-    """Position of the employee in the organization, 1 for base level, 2 for manager, 3 for admin."""
-    enabled: Optional[bool] = True
-    """Flag to enable or disable the employee account."""
-    efficiency_score: Optional[float] = 1.0  # Default efficiency score of 100%
-    """Efficiency score of the employee (default: 100%)."""
-    password: str = "password"
-    """Password for the employee account."""
-    
-    def __init__(self, **data):
-        super().__init__(**data)
+        if self.status == "COMPLETED":
+            self.actual_hours = self.end_date - self.start_date
+        if self.start_date is None:
+            self.start_date = datetime.now()
+
+
+    def save(self, db: Database):
+        conn = db.connect()
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO tasks (task_name, description, status, estimated_hours, actual_hours, 
+                           start_date, end_date, project_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (self.task_id, self.description, self.status, self.estimated_hours, 
+              self.actual_hours, self.start_date, self.end_date, self.project_id))
+        conn.commit()
+        conn.close()
+
+
+class Employee:
+    def __init__(self, employee_id: str, name: str, password: str, email: str, authority_level: int = 1, title: str = "Employee"):
+        self.employee_id = employee_id
+        self.name = name
+        self.password = password
+        self.email = email
+        self.authority_level = authority_level  # Integer for authority level (1, 2, 3)
+        self.title = title  # String for job title (e.g., "Project Manager", "Software Engineer")
         if not self._is_hashed(self.password):
             self.password = pwd_context.hash(self.password)
 
@@ -53,112 +117,38 @@ class Employee(BaseModel):
         """Check if the password is already hashed."""
         # This checks if the password has the correct format for a bcrypt hash.
         return password.startswith("$2b$")
-
-    def dict(self):
-        return {
-            "id": self.id,
-            "full_name": self.full_name,
-            "email": self.email,
-            "position": self.position,
-            "enabled": self.enabled,
-            "efficiency_score": self.efficiency_score,
-            "password": self.password,
-        }
+    
 
     def verify_password(self, password: str) -> bool:
         """Verify the given password against the stored hashed password."""
         return pwd_context.verify(password, self.password)
 
-
-class Task(BaseModel):
-    """Task model to store task details."""
-
-    name: str
-    """Name of the task."""
-    description: str
-    """Description of the task."""
-    project_name: str = ""
-    """Name of the project the task belongs to."""
-    dependencies: List[str] = []
-    """List of tasks that this task depends on."""
-    subtasks: List[str] = []
-    """List of tasks that are completed only as part of this task."""
-    status: TaskStatus = TaskStatus.OPEN
-    """Current status of the task."""
-    start_date: Optional[datetime] = None
-    """Date when the task was started."""
-    estimated_hours: Optional[int] = None
-    """User estimated time required to complete the task."""
-    calculated_hours: Optional[timedelta] = None
-    """Calculated estimate of time required to complete the task."""
-    actual_hours: Optional[timedelta] = None
-    """Actual time taken to complete the task."""
-    end_date: Optional[datetime] = None
-    """Date when the task was completed."""
-    employees_assigned: List[Employee] = []
-    """List of employees assigned to the task."""
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        if self.status is TaskStatus.COMPLETED:
-            self.actual_hours = self.end_date - self.start_date
-        if self.start_date is None:
-            self.start_date = datetime.now()
-        # if self.calculated_hours is None:
-        #     self.calculated_hours = calculate_time_estimate(self).calculated_hours
-        if self.end_date is None:
-            self.end_date = None
-            
-    def all_employees_assigned(self) -> List[str]:
-        employees: set[Employee] = set()
-        for (e) in self.employees_assigned:
-            employees.update(e)
-        for task in self.subtasks:
-            employees.update([e.id for e in task.employee_assigned])
-        return [e.id for e in self.employees_assigned]
+    def save(self, db: Database):
+        """Save employee to the database"""
+        conn = db.connect()
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO employees (employee_id, name, password, email, authority_level, title)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (self.employee_id, self.name, self.password, self.email, self.authority_level, self.title))
+        conn.commit()
+        conn.close()
 
 
-class Project(BaseModel):
-    id: str
-    name: str
-    description: str
-    tasks: List[Task] = []
-    
-    def get_employees_assigned(self) -> List[str]:
-        employees = set()
-        for task in self.tasks:
-            employees.update([e.id for e in task.employees_assigned])
-        return list(employees)
+class Project:
+    def __init__(self, project_id: str, project_name: str, description: str, start_date: str, end_date: str):
+        self.project_id = project_id
+        self.project_name = project_name
+        self.description = description
+        self.start_date = start_date
+        self.end_date = end_date
 
-    
-def extract_features(task: Task) -> np.ndarray:
-    """Converts task details into a feature vector for model training."""
-    text_embedding = embedder.encode(task.name + " " + task.description)
-    avg_efficiency = np.mean([e.efficiency_score for e in task.employees_assigned]) if task.employees_assigned else 1.0
-    num_dependencies = len(task.dependencies)
-    return np.hstack([text_embedding, avg_efficiency, num_dependencies])
-
-# Simulated historical task data
-historical_tasks = [
-    Task(name="Fix bug in authentication", description="Resolve login failure", estimated_hours=4, actual_hours=timedelta(hours=5), employees_assigned=[Employee(id="E1", full_name="Alice", efficiency_score=0.9)]),
-    Task(name="Implement search feature", description="Build a full-text search API", estimated_hours=10, actual_hours=timedelta(hours=12), employees_assigned=[Employee(id="E2", full_name="Bob", efficiency_score=0.8)]),
-]
-
-# Prepare dataset
-X = np.array([extract_features(task) for task in historical_tasks])
-y = np.array([task.actual_hours.total_seconds() / 3600 for task in historical_tasks])  # Convert timedelta to hours
-
-# Train model
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-rf_model = RandomForestRegressor(n_estimators=50, random_state=42)
-rf_model.fit(X_train, y_train)
-
-# Predict function
-def predict_task_time(task: Task) -> float:
-    features = extract_features(task).reshape(1, -1)
-    return rf_model.predict(features)[0]
-
-# Example prediction
-new_task = Task(name="Refactor database schema", description="Optimize tables and indexes", employees_assigned=[Employee(id="E3", full_name="Charlie", efficiency_score=0.85)])
-predicted_time = predict_task_time(new_task)
-print(f"Predicted Completion Time: {predicted_time:.2f} hours")
+    def save(self, db: Database):
+        conn = db.connect()
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO projects (project_id, project_name, description, start_date, end_date)
+        VALUES (?, ?, ?, ?, ?)
+        """, (self.project_id, self.project_name, self.description, self.start_date, self.end_date))
+        conn.commit()
+        conn.close()
