@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta
 import os
 from fastapi import (
     FastAPI,
@@ -10,32 +9,22 @@ from fastapi import (
 )
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from generate_DAG import generate_DAG
-from jose import JWTError, jwt  # type: ignore
-import base64
-import json
 
+# from generate_DAG import generate_DAG
 # from sklearn.ensemble import RandomForestRegressor
 # from sentence_transformers import SentenceTransformer
-import numpy as np
-from constants import FILE, AUTH
+from constants import FILE
 import utils
-from models import Database, Task, Project, Employee
 
 # ! Initialization Functions
 
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost:5001",
-        "http://localhost:8001",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -62,7 +51,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 # This is used to login and get the access token plus going to the dashboard
-@app.post("/login/")
+@app.post("/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = utils.authenticate_employee(form_data.username, form_data.password)
     if not user:
@@ -71,10 +60,10 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         )
     access_token = utils.create_access_token(data={"sub": user.employee_id})
     refresh_token = utils.create_refresh_token(data={"sub": user.employee_id})
-    
+
     # try:
-        # print("Access Token: ", access_token, "Expiration", utils.decode_jwt(access_token)["exp"])
-        # print("Refresh Token: ", refresh_token, "Expiration", utils.decode_jwt(refresh_token)["exp"])
+    # print("Access Token: ", access_token, "Expiration", utils.decode_jwt(access_token)["exp"])
+    # print("Refresh Token: ", refresh_token, "Expiration", utils.decode_jwt(refresh_token)["exp"])
     # except Exception as e:
     #     print("Error (test): ", str(e))
 
@@ -83,9 +72,15 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         "refresh_token": refresh_token,
         "token_type": "bearer",
     }
+    
+    
+@app.get("/get-id/")
+async def get_id(token: str = Depends(oauth2_scheme)):
+    payload = utils.decode_jwt(token)
+    return {"id": payload["sub"]}
 
 
-@app.post("/refresh/")
+@app.post("/refresh")
 async def refresh_token(refresh_token_data: dict):
     refresh_token: str = refresh_token_data.get("refresh_token")
 
@@ -95,14 +90,15 @@ async def refresh_token(refresh_token_data: dict):
     # print(refresh_token)
     payload = utils.decode_jwt(refresh_token)
     employee_id: str = payload["sub"]
-    print("Expiration: ", payload["exp"])
+    # print("Expiration: ", payload["exp"])
 
     if employee_id is None:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     # Here you could fetch user data from the database if needed
     new_access_token = utils.create_access_token(data={"sub": employee_id})
-    return {"access_token": new_access_token}
+    new_refresh_token = utils.create_refresh_token(data={"sub": employee_id})
+    return {"access_token": new_access_token, "refresh_token": new_refresh_token}
 
 
 @app.post("/register")
@@ -117,11 +113,10 @@ async def register_employee(employee_data: dict):
         )
 
 
-@app.get("/protected/")
-async def protected_route(token: str = Depends(oauth2_scheme)):
+@app.get("/verify-login/")
+async def verify_login(token: str = Depends(oauth2_scheme)):
     payload = utils.decode_jwt(token)
     return {"message": utils.load_employee(payload["sub"])}
-
 
 
 @app.post("/projects/create")
@@ -132,7 +127,7 @@ def create_new_project(request: dict, token: str = Depends(oauth2_scheme)):
 
 
 # This is used to display stuff on the dashboard
-@app.get("/projects/get_projects")
+@app.get("/projects/get-projects")
 async def dashboard(token: str = Depends(oauth2_scheme)):
     payload = utils.decode_jwt(token)
 
@@ -140,18 +135,16 @@ async def dashboard(token: str = Depends(oauth2_scheme)):
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    if (user.authority_level < 3):
+    if user.authority_level < 3:
         assigned_projects = utils.load_assigned_projects(user.employee_id)
-    
     else:
         assigned_projects = utils.load_all_projects()
-    
-    if assigned_projects is None:  # Only raise 404 if the result is None
-        raise HTTPException(status_code=404, detail="No projects found")
-    
+
+    if assigned_projects is None:
+        raise HTTPException(status_code=404, detail="Project Search Failed")
+
     # Return the projects in a dictionary with a descriptive key
     return {"assigned_projects": assigned_projects}
-
 
 
 # This is used to display stuff on the project page

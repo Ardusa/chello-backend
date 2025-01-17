@@ -465,9 +465,6 @@ def create_employee(
         raise ValueError(f"An employee with ID: {employee_id} already exists.")
 
     employee = Employee(employee_id, name, password, email, authority_level, title)
-    # def create_employee(data):
-    #     employee = Employee(**data)
-    # print(name + " password: " + password)
     employee.save(db)
     return employee
 
