@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
 from jose import JWTError, jwt
 import smtplib
 from sqlalchemy import create_engine
@@ -65,7 +65,7 @@ def create_employee(employee: dict) -> Employee:
 
 
 def load_employee(
-    employee_id: Optional[int], email: Optional[str]
+    employee_id: Optional[int] = None , email: Optional[str] = None
 ) -> Optional[Employee]:
     db = get_db()
     if employee_id:
@@ -76,7 +76,7 @@ def load_employee(
 
 
 def create_project(project: Project, order: int) -> Project:
-    db = get_db()
+    db = Depends(get_db)
     new_project = Project(**project.dict(), order=order)
     db.add(new_project)
     db.commit()
@@ -89,7 +89,7 @@ def load_project(project_id: int) -> Optional[Project]:
     return db.query(Project).filter(Project.id == project_id).first()
 
 
-def create_task(task: Task, project_id: int, parent_task_id: Optional[int]):
+def create_task(task: Task, project_id: int, parent_task_id: Optional[int] = None):
     db = get_db()
     db_task = Task(**task.dict(), project_id=project_id, parent_task_id=parent_task_id)
     db.add(db_task)
@@ -172,7 +172,7 @@ def load_project_tasks(employee_id=None, project_id=None):
 
 
 def authenticate_employee(email: str, password: str):
-    employee: Employee = load_employee(email=email)
+    employee: Employee = load_employee(employee_id=None, email=email)
     if not employee:
         print("Employee account not found: ", email)
         return False

@@ -8,7 +8,7 @@ from fastapi import (
 )
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
+# import uvicorn
 import database.utils as utils
 
 # from dependency_detection import generate_DAG
@@ -24,7 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+# uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -169,7 +169,7 @@ async def get_tasks(project_id: str, token: str = Depends(oauth2_scheme)):
     return {"project": project, "tasks": display_tasks}
 
 
-@app.get("/projects/{project_id}/tasks")
+@app.get("/projects/{project_id}/tasks", response_model={})
 def get_project_tasks(project_id: str, token: str = Depends(oauth2_scheme)):
     payload = utils.decode_jwt(token)
     tasks = utils.load_project_tasks(project_id, payload["sub"])
