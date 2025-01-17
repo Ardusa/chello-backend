@@ -55,21 +55,22 @@ def load_tasks(project_id: str) -> List[Task]:
     tasks = []
     for row in rows:
         task = Task(
-            task_id=row[1],
+            task_id=row[0],
             description=row[2],
             status=row[3],
-            estimated_hours=row[4],
-            actual_hours=row[5],
-            start_date=row[6],
-            end_date=row[7],
-            project_id=row[8],
-            parent_task_id=row[9],
-        )  # Load parent task ID
+            estimated_hours=row[5],
+            actual_hours=row[6],
+            start_date=row[7],
+            end_date=row[8],
+            project_id=row[9],
+            parent_task_id=row[4],
+        )
         tasks.append(task)
     conn.close()
     return tasks
 
 
+# TODO: Implement this
 def load_task_dependencies(task_id: str) -> List[Task]:
     conn = db.connect()
     cursor = conn.cursor()
@@ -304,8 +305,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-# def create_project(project_data) -> Project:
-# project = Project(**project_data)
 def create_project(
     project_id: str, project_name: str, description: str, start_date: str, end_date: str
 ) -> Project:
