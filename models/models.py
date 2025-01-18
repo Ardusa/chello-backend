@@ -7,7 +7,6 @@ from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
-
 # Association table for many-to-many relationship between Task and Employee
 task_employee_association = Table(
     "task_employee_association",
@@ -33,7 +32,7 @@ class Company(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, unique=True, nullable=False)
     founding_member = Column(
-        UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("employees.id"), nullable=True
     )
 
 
@@ -55,8 +54,8 @@ class Employee(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
-    position = Column(Integer, nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
+    position = Column(String, nullable=False)
     manager_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=True)
 
 
@@ -88,6 +87,7 @@ class Task(Base):
         name (str): Name of the task.
         description (str, optional): Description of the task.
         project_id (UUID): Foreign key referencing the project the task belongs to.
+        parent_task_id (UUID, optional): Foreign key referencing the parent task of the task.
         start_time (DateTime, optional): Start time of the task.
         end_time (DateTime, optional): End time of the task.
         completed (bool): Status of the task.
@@ -106,6 +106,7 @@ class Task(Base):
     name = Column(String, nullable=False)
     description = Column(String)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+    parent_task_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id"), nullable=True)
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
     completed = Column(Boolean, default=False)

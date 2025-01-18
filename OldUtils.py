@@ -1,15 +1,25 @@
 from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
+import uuid
 from fastapi import Depends, HTTPException, status
 from jose import JWTError, jwt
 import smtplib
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from .models import Employee, Project, Task, Company, task_employee_association, Base
+from models.models import (
+    Employee,
+    Project,
+    Task,
+    Company,
+    task_employee_association,
+    Base,
+)
+from schemas import api_schemas as api_schemas
 from constants import EMAIL, AUTH, DATABASE
 from collections import OrderedDict
 from passlib.context import CryptContext
 from typing import Optional
+from sqlalchemy.orm import Session
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -33,12 +43,10 @@ def get_db():
         db.close()
 
 
-# Functions to interact with SQLAlchemy
+# # Functions to interact with SQLAlchemy
 
 
-def create_employee(employee: dict) -> Employee:
-    db = next(get_db())
-
+def create_employee(employee: Employee, db: Session = Depends(get_db)) -> Employee:
     # Check if manager_id is real
     if (
         employee.manager_id
@@ -53,21 +61,58 @@ def create_employee(employee: dict) -> Employee:
     ):
         raise HTTPException(status_code=400, detail="Company ID does not exist")
 
-    plain_password = employee.pop("password")
-    employee["password_hash"] = hash_password(plain_password)
+    plain_password = employee.password_hash
+    employee.password_hash = hash_password(plain_password)
 
-    new_employee = Employee(**employee)
-
-    db.add(new_employee)
+    db.add(employee)
     db.commit()
-    db.refresh(new_employee)
-    return new_employee
+    db.refresh(employee)
+    return employee
+
+
+def register_account(employee_data: api_schemas.CreateNewAccountForm, db: Session = Depends(get_db)):
+    # Step 1: Generate a new UUID for the company
+    company_id = uuid.uuid4()
+
+    # Step 2: Create the company and employee
+    company = Company(
+        id=company_id,  # Assign the generated company_id
+        name=employee_data.company_name,
+        founding_member=None,  # We will update this after creating the employee
+    )
+
+    employee = Employee(
+        name=employee_data.name,
+        email=employee_data.email,
+        password_hash=hash_password(employee_data.password),
+        company_id=company_id,  # Set the generated company_id
+        position=employee_data.position,
+        manager_id=None,
+    )
+
+    # Step 3: Add the company and employee to the session
+    db.add(employee)
+    db.commit()  # Commit to insert both the company and the employee
+
+    # Step 4: Now that the employee is created, update the company to set the founding_member
+    company.founding_member = employee.id
+    db.add(company)
+    db.commit()  # Commit the update to the company
+
+    # Step 5: Refresh the company and employee data
+    db.refresh(company)
+    db.refresh(employee)
+
+    return employee
+
 
 
 def load_employee(
-    employee_id: Optional[int] = None , email: Optional[str] = None
+    employee_id: Optional[int] = None,
+    email: Optional[str] = None,
+    db: Session = Depends(get_db),
 ) -> Optional[Employee]:
-    db = get_db()
+    
     if employee_id:
         return db.query(Employee).filter(Employee.id == employee_id).first()
     if email:
@@ -75,22 +120,23 @@ def load_employee(
     return None
 
 
-def create_project(project: Project, order: int) -> Project:
-    db = Depends(get_db)
-    new_project = Project(**project.dict(), order=order)
-    db.add(new_project)
+def create_project(project: Project, db: Session = Depends(get_db)) -> Project:
+    db.add(project)
     db.commit()
-    db.refresh(new_project)
-    return new_project
+    db.refresh(project)
+    return project
 
 
-def load_project(project_id: int) -> Optional[Project]:
-    db = get_db()
+def load_project(project_id: int, db: Session = Depends(get_db)) -> Optional[Project]:
     return db.query(Project).filter(Project.id == project_id).first()
 
 
-def create_task(task: Task, project_id: int, parent_task_id: Optional[int] = None):
-    db = get_db()
+def create_task(
+    task: Task,
+    project_id: int,
+    parent_task_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
     db_task = Task(**task.dict(), project_id=project_id, parent_task_id=parent_task_id)
     db.add(db_task)
     db.commit()
@@ -98,12 +144,13 @@ def create_task(task: Task, project_id: int, parent_task_id: Optional[int] = Non
     return db_task
 
 
-def load_task(task_id: int):
-    db = get_db()
+def load_task(task_id: int, db: Session = Depends(get_db)):
     return db.query(Task).filter(Task.id == task_id).first()
 
 
-def load_project_tasks(employee_id=None, project_id=None):
+def load_project_tasks(
+    employee_id=None, project_id=None, db: Session = Depends(get_db)
+):
     """
     Get all tasks relevant to a specific employee for a specific project.
 
@@ -121,21 +168,7 @@ def load_project_tasks(employee_id=None, project_id=None):
     The function recursively builds the dictionary to include all subtasks and their subtasks, and so on. If employee_id is provided, only subtasks assigned to the employee are included.
     """
 
-    db = get_db()
     query = db.query(Task)
-
-    if employee_id:
-        query = query.join(task_employee_association).filter(
-            task_employee_association.c.employee_id == employee_id
-        )
-
-    if project_id:
-        query = query.filter(Task.project_id == project_id)
-
-    # Order tasks by the order column
-    query = query.order_by(Task.order)
-
-    tasks = query.all()
 
     def build_task_dict(task):
         """Recursively build an ordered dictionary of tasks to their subtasks."""
@@ -144,6 +177,49 @@ def load_project_tasks(employee_id=None, project_id=None):
             if not employee_id or employee_id in [emp.id for emp in subtask.employees]:
                 task_dict[task].append(build_task_dict(subtask))
         return task_dict
+
+    if employee_id:
+        # Check if the employee is the project manager of any projects
+        managed_projects = (
+            db.query(Project).filter(Project.project_manager == employee_id).all()
+        )
+        if managed_projects:
+            if project_id:
+                # If project_id is provided, check if the employee is the project manager of the project
+                project = db.query(Project).filter(Project.id == project_id).first()
+                if project and project.project_manager == employee_id:
+                    query = query.filter(Task.project_id == project_id)
+                else:
+                    raise HTTPException(
+                        status_code=403, detail="Not authorized to access this project"
+                    )
+            else:
+                # Return all projects managed by the employee
+                projects = OrderedDict()
+                for project in managed_projects:
+                    project_tasks = (
+                        db.query(Task)
+                        .filter(Task.project_id == project.id)
+                        .order_by(Task.order)
+                        .all()
+                    )
+                    project_dict = OrderedDict()
+                    for task in project_tasks:
+                        project_dict.update(build_task_dict(task))
+                    projects[project.id] = project_dict
+                return projects
+        else:
+            query = query.join(task_employee_association).filter(
+                task_employee_association.c.employee_id == employee_id
+            )
+
+    if project_id:
+        query = query.filter(Task.project_id == project_id)
+
+    # Order tasks by the order column
+    query = query.order_by(Task.order)
+
+    tasks = query.all()
 
     if employee_id and not project_id:
         # Separate tasks into each project the employee is part of
@@ -171,8 +247,8 @@ def load_project_tasks(employee_id=None, project_id=None):
     return task_dict
 
 
-def authenticate_employee(email: str, password: str):
-    employee: Employee = load_employee(employee_id=None, email=email)
+def authenticate_employee(email: str, password: str, db: Session = Depends(get_db)):
+    employee = load_employee(email=email, db=db)
     if not employee:
         print("Employee account not found: ", email)
         return False
@@ -189,18 +265,16 @@ def authenticate_employee(email: str, password: str):
 
 
 def create_access_token(data: dict):
-    to_encode = data.copy()
     expires_delta = timedelta(minutes=AUTH.ACCESS_TOKEN_EXPIRE_MINUTES)
-    expire = datetime.now(timezone.utc) + expires_delta  # Use timezone-aware datetime
-    to_encode.update({"exp": expire})
+    expire = datetime.now(timezone.utc) + expires_delta
+    to_encode = {"sub": str(data["sub"]), "exp": expire}
     return jwt.encode(to_encode, AUTH.SECRET_KEY, algorithm=AUTH.ALGORITHM)
 
 
 def create_refresh_token(data: dict):
-    to_encode = data.copy()
     expires_delta = timedelta(minutes=AUTH.REFRESH_TOKEN_EXPIRE_MINUTES)
-    expire = datetime.now(timezone.utc) + expires_delta  # Use timezone-aware datetime
-    to_encode.update({"exp": expire})
+    expire = datetime.now(timezone.utc) + expires_delta
+    to_encode = {"sub": str(data["sub"]), "exp": expire}
     return jwt.encode(to_encode, AUTH.SECRET_KEY, algorithm=AUTH.ALGORITHM)
 
 
@@ -219,6 +293,8 @@ def decode_jwt(token: str) -> dict:
     """
     try:
         payload = jwt.decode(token, AUTH.SECRET_KEY, algorithms=[AUTH.ALGORITHM])
+        id: uuid.UUID = uuid.UUID(payload.pop("sub"))
+        payload["sub"] = id
         return payload
     except JWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}")
