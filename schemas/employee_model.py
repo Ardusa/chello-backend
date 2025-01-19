@@ -20,7 +20,7 @@ class EmployeeBase(BaseModel):
     position: str
     manager_id: Optional[UUID]
 
-class EmployeeCreate(EmployeeBase):
+class EmployeeCreate(BaseModel):
     """
     Attributes:
         name (str): Name of the employee.
@@ -31,7 +31,12 @@ class EmployeeCreate(EmployeeBase):
         manager_id (UUID, optional): Foreign key referencing the manager of the employee, nullable.
     """
     
+    name: str
+    email: str
     password: str
+    company_id: str
+    position: str
+    manager_id: Optional[str]
 
 class EmployeeResponse(EmployeeBase):
     """

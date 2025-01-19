@@ -1,6 +1,6 @@
 from typing import Optional
+from fastapi import Depends
 from sqlalchemy.orm import Session
-from fastapi import Depends, HTTPException
 from models import Employee, Company
 from utils import hash_password
 from services import get_db
@@ -9,14 +9,19 @@ import uuid
 
 from utils import verify_password
 
-def create_employee(employee: Employee, db: Session = Depends(get_db)) -> Employee:
-    if employee.manager_id and not db.query(Employee).filter(Employee.id == employee.manager_id).first():
-        raise HTTPException(status_code=400, detail="Manager ID does not exist")
+def create_employee(employee_data: api_schemas.CreateNewAccountForm, db: Session = Depends(get_db)) -> Employee:
+    manager = db.query(Employee).filter(Employee.id == uuid.UUID(employee_data.manager_id)).first()
+    company = db.query(Company).filter(Company.id == uuid.UUID(employee_data.company_id)).first()
     
-    if employee.company_id and not db.query(Company).filter(Company.id == employee.company_id).first():
-        raise HTTPException(status_code=400, detail="Company ID does not exist")
+    employee = Employee(
+        name=employee_data.name,
+        company_id=company.id,
+        manager_id=manager.id,
+        position=employee_data.position,
+        email=employee_data.email,
+        password_hash=hash_password(employee_data.password),        
+    )
     
-    employee.password_hash = hash_password(employee.password_hash)
     db.add(employee)
     db.commit()
     db.refresh(employee)
@@ -85,3 +90,6 @@ def authenticate_employee(email: str, password: str, db):
         return False
 
     return employee
+
+def load_employees(manager: Employee, db: Session):
+    return db.query(Employee).filter(Employee.manager_id == manager.id).all()

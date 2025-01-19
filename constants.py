@@ -32,4 +32,4 @@ class EMAIL:
     SIGNATURE = "\n\nThanks for your support!\nChello Team"
 
 class DATABASE:
-    URL = "sqlite:///./chello-database.db"
+    URL = "sqlite:///./chello.db"

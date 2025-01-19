@@ -17,15 +17,18 @@ class ProjectBase(BaseModel):
     description: Optional[str]
     project_manager: UUID
     
-class ProjectCreate(ProjectBase):
+class ProjectCreate(BaseModel):
     """
     Attributes:
-        company_id (UUID): Foreign key referencing the company the project belongs to.
+        company_id (str): Foreign key referencing the company the project belongs to.
         name (str): Name of the project.
         description (str, optional): Description of the project.
-        project_manager (UUID): Foreign key referencing the project creator/manager
+        project_manager (str): Foreign key referencing the project creator/manager
     """
-    pass
+    company_id: str
+    name: str
+    description: Optional[str]
+    project_manager: str
 
 class ProjectResponse(ProjectBase):
     """

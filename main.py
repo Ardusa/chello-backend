@@ -1,3 +1,5 @@
+import asyncio
+import os
 from fastapi import (
     FastAPI,
     WebSocket,
@@ -45,7 +47,7 @@ app.add_middleware(
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
+os.makedirs("tables", exist_ok=True)
 
 # ? WebSocket Routing Functions
 
@@ -54,11 +56,19 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()  # Accept the WebSocket connection
     print("Connected to Client")
+    tables = ["tasks", "projects", "employees", "companies"]  # Adjust to your table names
+
     try:
         while True:
-            # Code for handling the connection or processing logic
-            # No sleep, so the server can immediately process further tasks
-            pass
+            for table in tables:
+                # Fetch the table data
+                table_data = db_service.fetch_table_data(table)
+                print("Sending Table Data")
+                # Save the table data to a file
+                db_service.save_table_to_file(table, table_data)
+            
+            # Wait for 1 second before updating again
+            await asyncio.sleep(1)
     except WebSocketDisconnect:
         print("WebSocket disconnected")
 
@@ -151,7 +161,7 @@ async def register_employee(
 ):
     """API endpoint for registering a new employee"""
     try:
-        employee_service.create_employee(employee=employee_data, db=db)
+        employee_service.create_employee(employee_data=employee_data, db=db)
         return {"message": "Employee registered successfully"}
     except Exception as e:
         raise HTTPException(
@@ -167,12 +177,29 @@ async def register_account(
     """API endpoint for registering a new employee"""
     print(employee_data)
     try:
-        employee_service.register_account(employee_data=employee_data, db=db)
+        employee_service.create_employee(employee_data=employee_data, db=db)
         return {"message": "Employee registered successfully"}
     except Exception as e:
         raise HTTPException(
             status_code=400, detail=f"Error creating employee: {str(e)}"
         )
+        
+@app.get("/employees/get-employees")
+async def get_employees(
+    db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
+):
+    payload = auth_service.decode_jwt(token)
+    manager = employee_service.load_employee(employee_id=payload["sub"], db=db)
+
+    if not manager:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    employees = employee_service.load_employees(manager, db=db)
+
+    if employees is None:
+        raise HTTPException(status_code=404, detail="Employee Search Failed")
+
+    return employees
 
 
 # @app.put("/employees/{employee_id}", response_model=employee_model.EmployeeResponse, response_model_exclude={"password_hash"})
@@ -236,8 +263,8 @@ def create_new_project(
     return project
 
 
-@app.get("/projects/get-projects", response_model=api_schemas.GetProjectsResponse)
-async def get_projects(
+@app.get("/projects/get-projects")
+async def get_projects_assigned(
     db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
 ):
     payload = auth_service.decode_jwt(token)
@@ -247,7 +274,7 @@ async def get_projects(
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    assigned_projects = task_service.load_project_tasks(employee_id=user.id, db=db)
+    assigned_projects = project_service.load_projects(employee_id=user.id, db=db)
 
     # if user.authority_level < 3:
     #     assigned_projects = utils.load_project_tasks(user.employee_id)
