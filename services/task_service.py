@@ -1,4 +1,5 @@
 from collections import OrderedDict
+import uuid
 from models import Task, Project, task_employee_association
 from sqlalchemy.orm import Session
 from fastapi import Depends, HTTPException
@@ -24,14 +25,14 @@ def load_task(task_id: int, db: Session = Depends(get_db)):
 
 
 def load_project_tasks(
-    employee_id=None, project_id=None, db: Session = Depends(get_db)
+    employee_id_str=None, employee_id=None, project_id_str=None, project_id=None, db: Session = Depends(get_db)
 ):
     """
     Get all tasks relevant to a specific employee for a specific project.
 
     Parameters:
-    employee_id (UUID, optional): The ID of the employee. If provided, the function will filter tasks to only include those assigned to this employee.
-    project_id (UUID, optional): The ID of the project. If provided, the function will filter tasks to only include those within this project.
+    employee_id_str (UUID, optional): The ID of the employee. If provided, the function will filter tasks to only include those assigned to this employee.
+    project_id_str (UUID, optional): The ID of the project. If provided, the function will filter tasks to only include those within this project.
 
     Returns:
     dict:
@@ -42,6 +43,10 @@ def load_project_tasks(
 
     The function recursively builds the dictionary to include all subtasks and their subtasks, and so on. If employee_id is provided, only subtasks assigned to the employee are included.
     """
+    if not employee_id:
+        employee_id = uuid.UUID(employee_id_str) if employee_id_str  else None
+    if not project_id:
+        project_id = uuid.UUID(project_id_str) if project_id_str else None
 
     query = db.query(Task)
 
@@ -58,39 +63,52 @@ def load_project_tasks(
         managed_projects = (
             db.query(Project).filter(Project.project_manager == employee_id).all()
         )
-        if managed_projects:
-            if project_id:
-                # If project_id is provided, check if the employee is the project manager of the project
-                project = db.query(Project).filter(Project.id == project_id).first()
-                if project and project.project_manager == employee_id:
-                    query = query.filter(Task.project_id == project_id)
-                else:
-                    # ! Incorrect Usage
-                    raise HTTPException(
-                        status_code=403, detail="Not authorized to access this project"
-                    )
-            else:
-                # Return all projects managed by the employee
-                projects = OrderedDict()
-                for project in managed_projects:
-                    project_tasks = (
-                        db.query(Task)
-                        .filter(Task.project_id == project.id)
-                        .order_by(Task.order)
-                        .all()
-                    )
-                    project_dict = OrderedDict()
-                    for task in project_tasks:
-                        project_dict.update(build_task_dict(task))
-                    projects[project.id] = project_dict
-                return projects
+        
+        # If the project specified happens to be managed by the eployee, return all tasks in the project
+        if managed_projects.__contains__(project_id):
+            query = query.filter(Task.project_id == project_id)
+        # If the employee is not a project manager, check if the employee is assigned to any tasks
         else:
-            query = query.join(task_employee_association).filter(
-                task_employee_association.c.employee_id == employee_id
+            query = db.query(task_employee_association).join(Task).filter(
+                task_employee_association.c.employee_id == employee_id,
+                Task.project_id == project_id
             )
+            
+            
 
-    if project_id:
-        query = query.filter(Task.project_id == project_id)
+
+        #     if project_id:
+        #         # If project_id is provided, check if the employee is the project manager of the project
+        #         project = db.query(Project).filter(Project.id == project_id).first()
+        #         if project and project.project_manager == employee_id:
+        #             query = query.filter(Task.project_id == project_id)
+        #         else:
+        #             # ! Incorrect Usage
+        #             raise HTTPException(
+        #                 status_code=403, detail="Not authorized to access this project"
+        #             )
+        #     else:
+        #         # Return all projects managed by the employee
+        #         projects = OrderedDict()
+        #         for project in managed_projects:
+        #             project_tasks = (
+        #                 db.query(Task)
+        #                 .filter(Task.project_id == project.id)
+        #                 .order_by(Task.order)
+        #                 .all()
+        #             )
+        #             project_dict = OrderedDict()
+        #             for task in project_tasks:
+        #                 project_dict.update(build_task_dict(task))
+        #             projects[project.id] = project_dict
+        #         return projects
+        # else:
+        #     query = query.join(task_employee_association).filter(
+        #         task_employee_association.c.employee_id == employee_id
+        #     )
+
+    # if project_id:
+    #     query = query.filter(Task.project_id == project_id)
 
     # Order tasks by the order column
     # query = query.order_by(Task.order)

@@ -53,7 +53,7 @@ def register_account(employee_data: api_schemas.CreateNewAccountForm, db: Sessio
     return employee
 
 def load_employee(
-    employee_id: Optional[int] = None,
+    employee_id: Optional[uuid.UUID] = None,
     email: Optional[str] = None,
     db: Session = Depends(get_db),
 ) -> Optional[Employee]:

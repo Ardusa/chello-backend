@@ -121,11 +121,11 @@ async def set_password(
 
 
 @app.get(
-    "/get-id/",
+    "/employees/self",
     response_model=employee_model.EmployeeResponse,
     response_model_exclude={"password_hash"},
 )
-async def get_id(
+async def get_self_employee(
     db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
 ):
     payload = auth_service.decode_jwt(token)
@@ -275,6 +275,7 @@ async def get_projects_assigned(
         raise HTTPException(status_code=404, detail="Employee not found")
 
     assigned_projects = project_service.load_projects(employee_id=user.id, db=db)
+    print(assigned_projects)
 
     # if user.authority_level < 3:
     #     assigned_projects = utils.load_project_tasks(user.employee_id)
@@ -288,15 +289,15 @@ async def get_projects_assigned(
 
 
 @app.get("/projects/{project_id}/")
-async def get_tasks(
+async def get_project_details(
     project_id: str,
     db: Session = Depends(db_service.get_db),
     token: str = Depends(oauth2_scheme),
 ):
     payload = auth_service.decode_jwt(token)
     employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
-
-    project = project_service.load_project(project_id=project_id, db=db)
+    project = project_service.load_project(project_id_str=project_id, db=db)
+    
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -308,11 +309,11 @@ async def get_tasks(
     #     display_tasks = utils.load_project_tasks(project_id=project_id)
 
     display_tasks = task_service.load_project_tasks(
-        project_id=project_id, employee_id=employee.id, db=db
+        project_id_str=project_id, employee_id=employee.id, db=db
     )
 
-    if not display_tasks:
-        raise HTTPException(status_code=404, detail="No tasks found")
+    # if not display_tasks:
+    #     raise HTTPException(status_code=404, detail="No tasks found")
 
     return {"project": project, "tasks": display_tasks}
 
@@ -325,10 +326,19 @@ def get_project_tasks(
 ):
     payload = auth_service.decode_jwt(token)
     tasks = task_service.load_project_tasks(
-        project_id=project_id, employee_id=payload["sub"], db=db
+        project_id_str=project_id, employee_id_str=payload["sub"], db=db
     )
 
     if tasks is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     return tasks
+
+@app.get("/employees/{employee_id}", response_model=employee_model.EmployeeResponse, response_model_exclude={"password_hash"})
+async def get_employee(
+    employee_id: str,
+    db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
+):
+    payload = auth_service.decode_jwt(token)
+    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
+    return employee
