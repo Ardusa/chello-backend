@@ -120,6 +120,8 @@ class Task(Base):
         remote_side=[id],
         backref=backref("subtasks", cascade="all, delete-orphan"),
     )
+    
+    # Not using at all
     employees = relationship(
         "Employee", secondary=task_employee_association, backref="tasks"
     )

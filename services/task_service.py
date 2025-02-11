@@ -15,22 +15,14 @@ def create_task(
     parent_task_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    
-    employees = []
-    if task.assigned_to:
-        employee = db.query(Employee).filter(Employee.id == uuid.UUID(task.assigned_to)).first()
-        if employee:
-            employees.append(employee)
-    
     db_task = Task(
         project_id=project_id,
         name=task.name,
         description=task.description,
         parent_task_id=uuid.UUID(parent_task_id) if parent_task_id else None,
-        employees=employees,
-        assigned_to=uuid.UUID(task.assigned_to) if task.assigned_to else None
+        assigned_to=uuid.UUID(task.assigned_to) if task.assigned_to else None,
     )
-    
+
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
@@ -42,14 +34,16 @@ def load_task(task_id: int, db: Session = Depends(get_db)):
 
 
 def load_project_tasks(
-    employee_id_str=None, employee_id=None, project_id_str=None, project_id=None, db: Session = Depends(get_db)
+    employee_id=None,
+    project_id=None,
+    db: Session = Depends(get_db),
 ):
     """
     Get all tasks relevant to a specific employee for a specific project.
 
     Parameters:
-    employee_id_str (UUID, optional): The ID of the employee. If provided, the function will filter tasks to only include those assigned to this employee.
-    project_id_str (UUID, optional): The ID of the project. If provided, the function will filter tasks to only include those within this project.
+    employee_id (UUID, optional): The ID of the employee. If provided, the function will filter tasks to only include those assigned to this employee.
+    project_id (UUID, optional): The ID of the project. If provided, the function will filter tasks to only include those within this project.
 
     Returns:
     dict:
@@ -60,10 +54,6 @@ def load_project_tasks(
 
     The function recursively builds the dictionary to include all subtasks and their subtasks, and so on. If employee_id is provided, only subtasks assigned to the employee are included.
     """
-    if not employee_id:
-        employee_id = uuid.UUID(employee_id_str) if employee_id_str  else None
-    if not project_id:
-        project_id = uuid.UUID(project_id_str) if project_id_str else None
 
     query = db.query(Task)
 
@@ -71,7 +61,7 @@ def load_project_tasks(
         """Recursively build an ordered dictionary of tasks to their subtasks."""
         task_dict = OrderedDict({task: []})
         for subtask in sorted(task.subtasks, key=lambda t: t.order):
-            if not employee_id or employee_id in [emp.id for emp in subtask.employees]:
+            if not employee_id or employee_id is subtask.assigned_to:
                 task_dict[task].append(build_task_dict(subtask))
         return task_dict
 
@@ -80,19 +70,20 @@ def load_project_tasks(
         managed_projects = (
             db.query(Project).filter(Project.project_manager == employee_id).all()
         )
-        
+
         # If the project specified happens to be managed by the eployee, return all tasks in the project
         if managed_projects.__contains__(project_id):
             query = query.filter(Task.project_id == project_id)
         # If the employee is not a project manager, check if the employee is assigned to any tasks
         else:
-            query = db.query(task_employee_association).join(Task).filter(
-                task_employee_association.c.employee_id == employee_id,
-                Task.project_id == project_id
+            query = (
+                db.query(task_employee_association)
+                .join(Task)
+                .filter(
+                    task_employee_association.c.employee_id == employee_id,
+                    Task.project_id == project_id,
+                )
             )
-            
-            
-
 
         #     if project_id:
         #         # If project_id is provided, check if the employee is the project manager of the project
@@ -157,14 +148,20 @@ def load_project_tasks(
 
     return task_dict
 
-def create_task_recursive(task_data: task_model.TaskCreateRecursive, project_id: str, db: Session, parent_task_id: Optional[str] = None):
+
+def create_task_recursive(
+    task_data: task_model.TaskCreateRecursive,
+    project_id: str,
+    db: Session,
+    parent_task_id: Optional[str] = None,
+):
     # Create the main task
     task = Task(
         project_id=project_id,
         name=task_data.name,
         description=task_data.description,
         parent_task_id=parent_task_id,
-        assigned_to=task_data.assigned_to
+        assigned_to=task_data.assigned_to,
     )
     db.add(task)
     db.commit()

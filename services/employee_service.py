@@ -4,12 +4,12 @@ from sqlalchemy.orm import Session
 from models import Employee, Company
 from utils import hash_password
 from services import get_db
-from schemas import api_schemas
+from schemas import api_schemas, employee_model
 import uuid
 
 from utils import verify_password
 
-def create_employee(employee_data: api_schemas.CreateNewAccountForm, db: Session = Depends(get_db)) -> Employee:
+def create_employee(employee_data: employee_model.EmployeeCreate, db: Session = Depends(get_db)) -> Employee:
     manager = db.query(Employee).filter(Employee.id == uuid.UUID(employee_data.manager_id)).first()
     company = db.query(Company).filter(Company.id == uuid.UUID(employee_data.company_id)).first()
     

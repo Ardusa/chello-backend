@@ -179,7 +179,7 @@ async def register_account(
     """API endpoint for registering a new employee"""
     print(employee_data)
     try:
-        employee_service.create_employee(employee_data=employee_data, db=db)
+        employee_service.register_account(employee_data=employee_data, db=db)
         return {"message": "Employee registered successfully"}
     except Exception as e:
         raise HTTPException(
@@ -288,14 +288,13 @@ async def get_projects_assigned(
     db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
 ):
     payload = auth_service.decode_jwt(token)
-
     user = employee_service.load_employee(employee_id=payload["sub"], db=db)
 
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
 
     assigned_projects = project_service.load_projects(employee_id=user.id, db=db)
-    print(assigned_projects)
+    # print(assigned_projects)
 
     # if user.authority_level < 3:
     #     assigned_projects = utils.load_project_tasks(user.employee_id)
@@ -322,7 +321,7 @@ async def get_project_details(
         raise HTTPException(status_code=404, detail="Project not found")
 
     display_tasks = task_service.load_project_tasks(
-        project_id_str=project_id, employee_id=employee.id, db=db
+        project_id=project.id, employee_id=employee.id, db=db
     )
 
     return {"project": project, "tasks": display_tasks}
@@ -379,8 +378,10 @@ def get_project_tasks(
     token: str = Depends(oauth2_scheme),
 ):
     payload = auth_service.decode_jwt(token)
+    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
+    project = project_service.load_project(project_id_str=project_id, db=db)
     tasks = task_service.load_project_tasks(
-        project_id_str=project_id, employee_id_str=payload["sub"], db=db
+        project_id=project.id, employee_id=employee.id, db=db
     )
 
     if tasks is None:
