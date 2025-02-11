@@ -1,5 +1,6 @@
 import asyncio
 import os
+from typing import List
 from fastapi import (
     FastAPI,
     WebSocket,
@@ -15,6 +16,7 @@ from schemas import (
     api_schemas as api_schemas,
     employee_model,
     project_model,
+    task_model,
 )
 
 from services import (
@@ -154,7 +156,7 @@ async def refresh_token(
     return {"access_token": new_access_token, "refresh_token": new_refresh_token}
 
 
-@app.post("/create-new-employee", response_model=api_schemas.MessageResponse)
+@app.put("/create-new-employee", response_model=api_schemas.MessageResponse)
 async def register_employee(
     employee_data: employee_model.EmployeeCreate,
     db: Session = Depends(db_service.get_db),
@@ -169,7 +171,7 @@ async def register_employee(
         )
 
 
-@app.post("/register-account", response_model=api_schemas.MessageResponse)
+@app.put("/register-account", response_model=api_schemas.MessageResponse)
 async def register_account(
     employee_data: api_schemas.CreateNewAccountForm,
     db: Session = Depends(db_service.get_db),
@@ -252,7 +254,7 @@ async def verify_login(
     return employee
 
 
-@app.post("/projects/create", response_model=project_model.ProjectResponse)
+@app.put("/projects/create", response_model=project_model.ProjectResponse)
 def create_new_project(
     request: project_model.ProjectCreate,
     db: Session = Depends(db_service.get_db),
@@ -260,6 +262,24 @@ def create_new_project(
 ):
     auth_service.decode_jwt(token)
     project = project_service.create_project(project=request, db=db)
+    return project
+
+@app.put("/projects/{project_id}/edit", response_model=project_model.ProjectResponse)
+def edit_project(
+    request: project_model.ProjectCreate, 
+    project_id: str, 
+    db: Session = Depends(db_service.get_db), 
+    token: str = Depends(oauth2_scheme)
+):
+    auth_service.decode_jwt(token)
+    project = project_service.load_project(project_id_str=project_id, db=db)
+    
+    update_data = request.dict(exclude_unset=True)  # Only update provided fields
+    for key, value in update_data.items():
+        setattr(project, key, value)  # Update only changed fields
+
+    db.commit()
+    db.refresh(project)
     return project
 
 
@@ -301,21 +321,55 @@ async def get_project_details(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # if employee.authority_level < 3 and employee.employee_id:
-    #     display_tasks = utils.load_project_tasks(
-    #         project_id=project_id, employee_id=payload["sub"]
-    #     )
-    # else:
-    #     display_tasks = utils.load_project_tasks(project_id=project_id)
-
     display_tasks = task_service.load_project_tasks(
         project_id_str=project_id, employee_id=employee.id, db=db
     )
 
-    # if not display_tasks:
-    #     raise HTTPException(status_code=404, detail="No tasks found")
-
     return {"project": project, "tasks": display_tasks}
+
+
+@app.post("/projects/create-task", response_model=task_model.TaskResponse)
+def create_task(
+    request: task_model.TaskCreate, 
+    db: Session = Depends(db_service.get_db), 
+    token: str = Depends(oauth2_scheme)
+):
+    auth_service.decode_jwt(token)
+    project = project_service.load_project(project_id_str=request.project_id, db=db)
+
+    task = task_service.create_task(
+        task=request,
+        project_id=project.id,
+        db=db
+    )
+    
+    task.__dict__["assigned_to"] = request.assigned_to
+    print("task: ", task.__dict__)
+
+    return task
+
+@app.post("/projects/{project_id}/batch-create-tasks")
+def batch_create_tasks(
+    project_id: str,
+    tasks: List[task_model.TaskCreateRecursive],
+    db: Session = Depends(db_service.get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    # Authenticate user
+    user = auth_service.decode_jwt(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Verify project exists
+    project = project_service.load_project(project_id_str=project_id, db=db)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Create each task and its subtasks
+    for task_data in tasks:
+        task_service.create_task_recursive(task_data, project_id, db)
+
+    return {"message": "Tasks created successfully"}
 
 
 @app.put("/projects/{project_id}/tasks")

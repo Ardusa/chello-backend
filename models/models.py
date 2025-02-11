@@ -111,6 +111,7 @@ class Task(Base):
     end_time = Column(DateTime, nullable=True)
     completed = Column(Boolean, default=False)
     order = Column(Integer, nullable=False, default=0)
+    assigned_to = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=True)
 
     # Relationships
     project = relationship("Project", backref="tasks")

@@ -2,18 +2,35 @@ from collections import OrderedDict
 import uuid
 from models import Task, Project, task_employee_association
 from sqlalchemy.orm import Session
-from fastapi import Depends, HTTPException
+from fastapi import Depends
 from typing import Optional
+from models.models import Employee
+from schemas import task_model
 from services import get_db
 
 
 def create_task(
-    task: Task,
-    project_id: int,
-    parent_task_id: Optional[int] = None,
+    task: task_model.TaskCreate,
+    project_id: uuid.UUID,
+    parent_task_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    db_task = Task(**task.dict(), project_id=project_id, parent_task_id=parent_task_id)
+    
+    employees = []
+    if task.assigned_to:
+        employee = db.query(Employee).filter(Employee.id == uuid.UUID(task.assigned_to)).first()
+        if employee:
+            employees.append(employee)
+    
+    db_task = Task(
+        project_id=project_id,
+        name=task.name,
+        description=task.description,
+        parent_task_id=uuid.UUID(parent_task_id) if parent_task_id else None,
+        employees=employees,
+        assigned_to=uuid.UUID(task.assigned_to) if task.assigned_to else None
+    )
+    
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
@@ -139,3 +156,20 @@ def load_project_tasks(
         task_dict.update(build_task_dict(task))
 
     return task_dict
+
+def create_task_recursive(task_data: task_model.TaskCreateRecursive, project_id: str, db: Session, parent_task_id: Optional[str] = None):
+    # Create the main task
+    task = Task(
+        project_id=project_id,
+        name=task_data.name,
+        description=task_data.description,
+        parent_task_id=parent_task_id,
+        assigned_to=task_data.assigned_to
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    # Recursively create subtasks
+    for subtask_data in task_data.subtasks:
+        create_task_recursive(subtask_data, project_id, db, parent_task_id=task.id)

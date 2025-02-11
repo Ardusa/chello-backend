@@ -76,3 +76,14 @@ def load_projects(
         projects[project_id] = project_dict
 
     return projects
+
+def update_project(
+    project_id: uuid.UUID, project: project_model.ProjectCreate, db: Session = Depends(get_db)
+) -> Project:
+    db_project = db.query(Project).filter(Project.id == project_id).first()
+    db_project.name = project.name
+    db_project.description = project.description
+    db_project.project_manager = uuid.UUID(project.project_manager)
+    db.commit()
+    db.refresh(db_project)
+    return db_project
