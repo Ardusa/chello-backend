@@ -306,7 +306,6 @@ async def get_projects_assigned(
 
     return assigned_projects
 
-
 @app.get("/projects/{project_id}/")
 async def get_project_details(
     project_id: str,
@@ -323,8 +322,18 @@ async def get_project_details(
     display_tasks = task_service.load_project_tasks(
         project_id=project.id, employee_id=employee.id, db=db
     )
+    
+    print("display tasks: ", display_tasks)
+    
+    try:
+        display_tasks_json = db_service.convert_uuid_keys_to_str(display_tasks)
+    except TypeError as e:
+        print(f"Error converting display_tasks to JSON: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    
+    print("display_tasks: ", display_tasks_json)
 
-    return {"project": project, "tasks": display_tasks}
+    return {"project": project.__dict__, "tasks": display_tasks_json}
 
 
 @app.post("/projects/create-task", response_model=task_model.TaskResponse)
@@ -397,3 +406,5 @@ async def get_employee(
     payload = auth_service.decode_jwt(token)
     employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
     return employee
+
+# OrderedDict([(UUID('332d0128-063e-454e-b107-b86f540f60fd'), {}), (UUID('13d07e43-d78d-426c-8458-efe22e6f8cf0'), {})])

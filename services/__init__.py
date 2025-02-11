@@ -1,7 +1,7 @@
 """ This module is used to import all the services in the application. """
 
 from .auth_service import create_access_token, create_refresh_token, decode_jwt
-from .db_service import get_db, fetch_table_data, save_table_to_file
+from .db_service import get_db, fetch_table_data, save_table_to_file, custom_serializer, convert_to_json, convert_uuid_keys_to_str
 from .email_service import send_email
 from .employee_service import create_employee, register_account, load_employee, authenticate_employee, load_employees
 from .project_service import create_project, load_project, load_projects, update_project
@@ -28,4 +28,7 @@ __all__ = [
     "load_employees",
     "update_project",
     "create_task_recursive",
+    "custom_serializer",
+    "convert_to_json",
+    "convert_uuid_keys_to_str",
 ]
