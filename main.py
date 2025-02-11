@@ -294,12 +294,6 @@ async def get_projects_assigned(
         raise HTTPException(status_code=404, detail="Employee not found")
 
     assigned_projects = project_service.load_projects(employee_id=user.id, db=db)
-    # print(assigned_projects)
-
-    # if user.authority_level < 3:
-    #     assigned_projects = utils.load_project_tasks(user.employee_id)
-    # else:
-    #     assigned_projects = utils.load_all_projects()
 
     if assigned_projects is None:
         raise HTTPException(status_code=404, detail="Project Search Failed")
@@ -323,15 +317,11 @@ async def get_project_details(
         project_id=project.id, employee_id=employee.id, db=db
     )
     
-    print("display tasks: ", display_tasks)
-    
     try:
         display_tasks_json = db_service.convert_uuid_keys_to_str(display_tasks)
     except TypeError as e:
         print(f"Error converting display_tasks to JSON: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
-    print("display_tasks: ", display_tasks_json)
 
     return {"project": project.__dict__, "tasks": display_tasks_json}
 
@@ -407,4 +397,18 @@ async def get_employee(
     employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
     return employee
 
-# OrderedDict([(UUID('332d0128-063e-454e-b107-b86f540f60fd'), {}), (UUID('13d07e43-d78d-426c-8458-efe22e6f8cf0'), {})])
+
+@app.get("/tasks/{task_id}", response_model=task_model.TaskResponse)
+def get_task(
+    task_id: str,
+    db: Session = Depends(db_service.get_db),
+    token: str = Depends(oauth2_scheme),
+):
+    payload = auth_service.decode_jwt(token)
+    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
+    task = task_service.load_task(task_id=task_id, db=db)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return task

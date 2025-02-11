@@ -28,8 +28,8 @@ def create_task(
     return db_task
 
 
-def load_task(task_id: int, db: Session = Depends(get_db)):
-    return db.query(Task).filter(Task.id == task_id).first()
+def load_task(task_id: str, db: Session = Depends(get_db)):
+    return db.query(Task).filter(Task.id == uuid.UUID(task_id)).first()
 
 
 def load_project_tasks(
@@ -122,6 +122,7 @@ def load_project_tasks(
             if not recursive_insert(project, task):
                 raise ValueError("Task Parent Not Present")
 
+        # ! Does not work
         # sort_recursive_dict(project)
         return project
 
