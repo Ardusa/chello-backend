@@ -62,7 +62,9 @@ def load_employee(
         return db.query(Employee).filter(Employee.id == employee_id).first()
     if email:
         return db.query(Employee).filter(Employee.email == email).first()
-    return None
+    raise ValueError("Invalid function call: either employee_id or email must be provided")
+    
+    
 
 def create_password(form_data: dict):
     user: Employee = load_employee(employee_id=form_data["id"])
