@@ -3,8 +3,6 @@ from jose import JWTError, jwt
 from fastapi import HTTPException
 from constants import AUTH
 import uuid
-# from services import load_employee
-from utils import verify_password
 
 def create_access_token(data: dict):
     expires_delta = timedelta(minutes=AUTH.ACCESS_TOKEN_EXPIRE_MINUTES)

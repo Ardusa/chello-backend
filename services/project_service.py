@@ -45,17 +45,15 @@ def load_projects(
         .outerjoin(
             task_employee_association, Task.id == task_employee_association.c.task_id
         )
-        
         .filter(
             (task_employee_association.c.employee_id == employee_id)
             | (Project.project_manager == employee_id)
         )
-        
         .group_by(Project.id)
         .order_by(func.count(Task.id).desc())
         .all()
     )
-    
+
     print("Task counts: " + str(task_counts))
     print(db.query(Task).filter(Task.assigned_to == employee_id).all())
 
@@ -145,3 +143,14 @@ def update_project(
     db.commit()
     db.refresh(db_project)
     return db_project
+
+
+def delete_project(project_id: uuid.UUID, db: Session = Depends(get_db)):
+    tasks = db.query(Task).filter(Task.project_id == project_id).all()
+    for task in tasks:
+        task_service.delete_task(task.id, db)
+        tasks = db.query(Task).filter(Task.project_id == project_id).all()
+        
+    db.query(Project).filter(Project.id == project_id).delete()
+    db.commit()
+    return True

@@ -1,6 +1,5 @@
 import asyncio
 import os
-from typing import List
 from fastapi import (
     FastAPI,
     WebSocket,
@@ -346,28 +345,22 @@ def create_task(
 
     return task
 
-@app.post("/projects/{project_id}/batch-create-tasks")
-def batch_create_tasks(
-    project_id: str,
-    tasks: List[task_model.TaskCreateRecursive],
+@app.delete("/tasks/{task_id}/delete", response_model=api_schemas.MessageResponse)
+def delete_task(
+    task_id: str,
     db: Session = Depends(db_service.get_db),
-    token: str = Depends(oauth2_scheme)
+    token: str = Depends(oauth2_scheme),
 ):
-    # Authenticate user
-    user = auth_service.decode_jwt(token)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    auth_service.decode_jwt(token)
+    task = task_service.load_task(task_id=task_id, db=db)
+    
+    task_service.delete_task(task_id=task.id, db=db)
 
-    # Verify project exists
-    project = project_service.load_project(project_id_str=project_id, db=db)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
 
-    # Create each task and its subtasks
-    for task_data in tasks:
-        task_service.create_task_recursive(task_data, project_id, db)
 
-    return {"message": "Tasks created successfully"}
+    return {"message": "Task deleted successfully"}
 
 
 @app.put("/projects/{project_id}/tasks")
@@ -411,3 +404,20 @@ def get_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     return task
+
+@app.delete("/projects/{project_id}/delete", response_model=api_schemas.MessageResponse)
+def delete_project(
+    project_id: str,
+    db: Session = Depends(db_service.get_db),
+    token: str = Depends(oauth2_scheme),
+):
+    auth_service.decode_jwt(token)
+    project = project_service.load_project(project_id_str=project_id, db=db)
+    
+    project_service.delete_project(project_id=project.id, db=db)
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+
+    return {"message": "Project deleted successfully"}

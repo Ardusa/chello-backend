@@ -3,7 +3,6 @@ import uuid
 from models import Task, Project
 from sqlalchemy.orm import Session
 from fastapi import Depends
-from typing import Optional
 from schemas import task_model
 from services import get_db
 from models import task_employee_association
@@ -174,24 +173,9 @@ def load_project_tasks(
         return projects
 
 
-def create_task_recursive(
-    task_data: task_model.TaskCreateRecursive,
-    project_id: str,
-    db: Session,
-    parent_task_id: Optional[str] = None,
-):
-    # Create the main task
-    task = Task(
-        project_id=project_id,
-        name=task_data.name,
-        description=task_data.description,
-        parent_task_id=parent_task_id,
-        assigned_to=task_data.assigned_to,
-    )
-    db.add(task)
+def delete_task(task_id: uuid.UUID, db: Session = Depends(get_db)):
+    db.query(Task).filter(Task.parent_task_id == task_id).delete()
+    db.query(Task).filter(Task.id == task_id).delete()
+    db.query(task_employee_association).filter(task_employee_association.c.task_id == task_id).delete()
     db.commit()
-    db.refresh(task)
-
-    # Recursively create subtasks
-    for subtask_data in task_data.subtasks:
-        create_task_recursive(subtask_data, project_id, db, parent_task_id=task.id)
+    return True
