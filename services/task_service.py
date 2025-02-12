@@ -6,26 +6,37 @@ from fastapi import Depends
 from typing import Optional
 from schemas import task_model
 from services import get_db
+from models import task_employee_association
 
 
 def create_task(
     task: task_model.TaskCreate,
     project_id: uuid.UUID,
-    parent_task_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     db_task = Task(
         project_id=project_id,
         name=task.name,
         description=task.description,
-        parent_task_id=uuid.UUID(parent_task_id) if parent_task_id else None,
+        parent_task_id=uuid.UUID(task.parent_task_id) if task.parent_task_id else None,
         assigned_to=uuid.UUID(task.assigned_to) if task.assigned_to else None,
     )
 
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
+    
+    if task.assigned_to:
+        db.execute(
+            task_employee_association.insert().values(
+                task_id=db_task.id, employee_id=db_task.assigned_to
+            )
+        )
+        db.commit()
+
     return db_task
+
+
 
 
 def load_task(task_id: str, db: Session = Depends(get_db)):

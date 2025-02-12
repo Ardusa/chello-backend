@@ -40,21 +40,24 @@ def load_projects(
 ) -> Dict[int, Project]:
     # Query to get the count of tasks per project for the given employee
     task_counts = (
-        # db.query(Project, func.count(Task.id).label("task_count"))
         db.query(Project.id, func.count(Task.id).label("task_count"))
         .outerjoin(Task, Project.id == Task.project_id)
         .outerjoin(
             task_employee_association, Task.id == task_employee_association.c.task_id
         )
+        
         .filter(
             (task_employee_association.c.employee_id == employee_id)
             | (Project.project_manager == employee_id)
-            | (Task.id.is_(None))
         )
+        
         .group_by(Project.id)
         .order_by(func.count(Task.id).desc())
         .all()
     )
+    
+    print("Task counts: " + str(task_counts))
+    print(db.query(Task).filter(Task.assigned_to == employee_id).all())
 
     # Create an ordered dictionary of projects based on the task count
     projects = OrderedDict()

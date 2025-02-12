@@ -19,6 +19,7 @@ def create_refresh_token(data: dict):
     return jwt.encode(to_encode, AUTH.SECRET_KEY, algorithm=AUTH.ALGORITHM)
 
 def decode_jwt(token: str) -> dict:
+    """Decode a JWT token and return the payload with the user swapped for a UUID"""
     try:
         payload = jwt.decode(token, AUTH.SECRET_KEY, algorithms=[AUTH.ALGORITHM])
         id: uuid.UUID = uuid.UUID(payload.pop("sub"))

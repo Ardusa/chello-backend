@@ -288,12 +288,12 @@ async def get_projects_assigned(
     db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
 ):
     payload = auth_service.decode_jwt(token)
-    user = employee_service.load_employee(employee_id=payload["sub"], db=db)
+    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
 
-    if not user:
+    if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
 
-    assigned_projects = project_service.load_projects(employee_id=user.id, db=db)
+    assigned_projects = project_service.load_projects(employee_id=employee.id, db=db)
 
     if assigned_projects is None:
         raise HTTPException(status_code=404, detail="Project Search Failed")
@@ -393,8 +393,8 @@ async def get_employee(
     employee_id: str,
     db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
 ):
-    payload = auth_service.decode_jwt(token)
-    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
+    auth_service.decode_jwt(token)
+    employee = employee_service.load_employee(employee_id_str=employee_id, db=db)
     return employee
 
 
@@ -404,8 +404,7 @@ def get_task(
     db: Session = Depends(db_service.get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    payload = auth_service.decode_jwt(token)
-    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
+    auth_service.decode_jwt(token)
     task = task_service.load_task(task_id=task_id, db=db)
 
     if not task:

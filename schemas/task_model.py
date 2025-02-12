@@ -30,7 +30,7 @@ class TaskCreate(BaseModel):
     """
     project_id: str
     name: str
-    description: Optional[str]
+    description: str
     assigned_to: Optional[str]
     parent_task_id: Optional[str]
 
