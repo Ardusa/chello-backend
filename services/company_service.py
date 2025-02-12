@@ -3,7 +3,7 @@ from models import Company
 import uuid
 from sqlalchemy.orm import Session
 from fastapi import Depends
-from services import get_db
+from .db_service import get_db
 
 
 def load_company(

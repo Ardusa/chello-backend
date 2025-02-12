@@ -5,7 +5,8 @@ from models import Task, Project
 from sqlalchemy.orm import Session
 from fastapi import Depends
 from schemas import task_model
-from services import get_db, load_project, load_account
+from .db_service import get_db
+from .account_service import load_account
 from models import task_account_association
 
 
@@ -23,8 +24,9 @@ def create_task(
     )
     
     project_id = uuid.UUID(task.project_id)
+    # load_project(project_id=project_id, db=db)
+    from .project_service import load_project
     load_project(project_id=project_id, db=db)
-    new_task.project_id = project_id
     
     assigned_to_id = uuid.UUID(task.assigned_to)
     load_account(account_id=assigned_to_id, db=db)

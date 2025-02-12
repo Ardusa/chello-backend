@@ -2,7 +2,10 @@ import uuid
 from fastapi import Depends
 from sqlalchemy.orm import Session
 from schemas import project_model
-from services import get_db, load_account, load_company, load_task, load_project_tasks, delete_task
+from .db_service import get_db
+from .account_service import load_account
+from .company_service import load_company
+from .task_service import load_task, load_project_tasks, delete_task
 from sqlalchemy import func
 from collections import OrderedDict
 from models import Project, Task, task_account_association

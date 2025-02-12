@@ -3,10 +3,10 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 from models import Account
 from utils import hash_password
-from services import get_db
 from schemas import account_model
 import uuid
-from services import load_company
+from .db_service import get_db
+from .company_service import load_company
 
 from utils import verify_password
 

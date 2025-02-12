@@ -18,10 +18,7 @@ class AUTH:
     REFRESH_TOKEN_EXPIRE_MINUTES = 60
 
 class FILE:
-    EMPLOYEES_FILE = "employees.json"
-    PROJECTS_DIR = "projects/"
-    MODEL_DATA_FILE = "model_data.json"
-    TASKS_FILE = "tasks.json"
+    pass
 
 class HOST:
     LOCAL_HOST = "127.0.0.1"
