@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 from uuid import UUID
@@ -29,9 +30,9 @@ class TaskBase(BaseModel):
     parent_task_id: Optional[UUID]
     order: int
     
-    task_created: str
-    task_started: Optional[str]
-    task_completed: Optional[str]
+    task_created: datetime
+    task_started: Optional[datetime]
+    task_completed: Optional[datetime]
     is_finished: bool
     
     task_human_estimated_man_hours: Optional[float]

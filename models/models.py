@@ -163,7 +163,7 @@ class Project(Base):
     project_completed = Column(DateTime, nullable=True)
     is_finished = Column(Boolean, default=False, nullable=False)
     
-    tasks = relationship("Task", backref="project")
+    tasks = relationship("Task", backref="project", foreign_keys="[Task.project_id]")
 
 
 class Company(Base):
@@ -186,7 +186,7 @@ class Company(Base):
     founding_date = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
     founding_member = Column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False)
     
-    accounts = relationship("Account", backref="company")
-    projects = relationship("Project", backref="company")
+    accounts = relationship("Account", backref="company", foreign_keys="[Account.company_id]")
+    projects = relationship("Project", backref="company", foreign_keys="[Project.company_id]")
     
     task_limit = Column(Integer, default=0, nullable=True)

@@ -23,10 +23,11 @@ def create_task(
         order=task.order,
     )
     
-    project_id = uuid.UUID(task.project_id)
     # load_project(project_id=project_id, db=db)
+    project_id = uuid.UUID(task.project_id)
     from .project_service import load_project
     load_project(project_id=project_id, db=db)
+    new_task.project_id = project_id
     
     assigned_to_id = uuid.UUID(task.assigned_to)
     load_account(account_id=assigned_to_id, db=db)
@@ -52,7 +53,7 @@ def create_task(
     return new_task
 
 
-def load_task(task_id: Optional[uuid.UUID], task_id_str: Optional[str], db: Session = Depends(get_db)) -> Task:
+def load_task(task_id: Optional[uuid.UUID] = None, task_id_str: Optional[str] = None, db: Session = Depends(get_db)) -> Task:
     """
     This function is used to load a task from the database. It will throw an error if the query returns no results.
     """
@@ -114,7 +115,6 @@ def load_project_tasks(
                 .order_by(Task.order)
                 .group_by(Task.project_id)
             )
-            print("Not project manager", query.all())
 
     elif account_id and not project_id:
         query = (

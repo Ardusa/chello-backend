@@ -26,9 +26,9 @@ def create_project(
     load_account(account_id=project_manager_id, db=db)
     new_project.project_manager = project_manager_id
     
-    company_id = uuid.UUID(project.company_id)
-    load_company(company_id=company_id, db=db)
-    new_project.company_id = company_id
+    # company_id = uuid.UUID(project.company_id)
+    load_company(company_id=project.company_id, db=db)
+    new_project.company_id = project.company_id
     
     db.add(new_project)
     db.commit()
@@ -81,9 +81,6 @@ def load_projects(
         .all()
     )
 
-    print("Task counts: " + str(task_counts))
-    print(db.query(Task).filter(Task.assigned_to == account_id).all())
-
     # Create an ordered dictionary of projects based on the task count
     projects = OrderedDict()
     for project_id, task_count in task_counts:
@@ -105,13 +102,12 @@ def load_projects(
         ) -> int:
             count = 0
             for parent_task_id, child_tasks in project.items():
-                parent_task = load_task(str(parent_task_id), db)
+                parent_task = load_task(task_id=parent_task_id, db=db)
                 master_task_count = 0
 
                 if len(child_tasks) > 0:
                     for child_id, child_child_task_id_or_dict in child_tasks.items():
-                        print("Child ID: " + str(child_id))
-                        child_task = load_task(str(child_id), db)
+                        child_task = load_task(task_id=child_id, db=db)
                         child_completion_count = 0
                         if isinstance(
                             child_child_task_id_or_dict, OrderedDict
@@ -120,33 +116,23 @@ def load_projects(
                                 child_completion_count += get_task_count(
                                     child_child_task_id_or_dict
                                 )
-                                print(
-                                    "Child completion count: "
-                                    + str(child_completion_count)
-                                )
                             else:  # If there are no subtasks
-                                print(
-                                    "Task: "
-                                    + child_task.name
-                                    + " completed: "
-                                    + str(child_task.completed)
-                                )
-                                if not child_task.completed:
+                                if not child_task.is_finished:
                                     child_completion_count += 1
 
                         if not child_completion_count == 0:
                             master_task_count += 1
                         else:
-                            child_task.completed = True
+                            child_task.is_finished = True
                 else:
-                    if not parent_task.completed:
+                    if not parent_task.is_finished:
                         master_task_count += 1
 
                 if master_task_count > 0:
                     count += 1
-                    parent_task.completed = False
+                    parent_task.is_finished = False
                 else:
-                    parent_task.completed = True
+                    parent_task.is_finished = True
 
             return count
 

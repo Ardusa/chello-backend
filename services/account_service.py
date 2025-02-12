@@ -6,7 +6,8 @@ from utils import hash_password
 from schemas import account_model
 import uuid
 from .db_service import get_db
-from .company_service import load_company
+from .company_service import load_company, create_company_with_details
+from schemas.company_model import CompanyBase
 
 from utils import verify_password
 
@@ -40,6 +41,16 @@ def create_account(
     db.add(new_account)
     db.commit()
     db.refresh(new_account)
+    
+    if not account_data.company_id:
+        company_data = CompanyBase(
+            id=new_account.company_id,
+            name=new_account.name,
+            founding_member=new_account.id,
+            founding_date=new_account.account_created,
+        )
+        create_company_with_details(company_data=company_data, db=db)
+    
     return new_account
 
 
@@ -68,6 +79,7 @@ def load_account(
             "Account not found: ", account_id if account_id else email
         )
         
+
     return query
 
 
@@ -101,11 +113,8 @@ def authenticate_account(email: str, password: str, db):
 
 def load_accounts(manager: Account, db: Session):
     """
-    This function is used to load all accounts for a given manager. It will throw an error if the query returns no results.
+    This function is used to load all accounts for a given manager.
     """
     query = db.query(Account).filter(Account.manager_id == manager.id).all()
-    
-    if not query:
-        raise ValueError("No accounts found for manager: ", manager.id)
     
     return query

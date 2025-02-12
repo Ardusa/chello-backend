@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 from uuid import UUID
@@ -8,7 +9,7 @@ class AccountBase(BaseModel):
         id (UUID): Unique identifier for the account, primary key.
         name (str): Name of the account.
         email (str, unique): Unique email address of the account.
-        password (str): Password of the account.
+        password_hash (str): Password of the account.
         manager_id (UUID, optional): Foreign key referencing the manager of the account, nullable.
         position (int): Position of the account within the company.
         free_plan (bool): Boolean indicating if the account is on a free plan.
@@ -22,12 +23,12 @@ class AccountBase(BaseModel):
     id: UUID
     name: str
     email: str
-    password: str
-    company_id: str
-    manager_id: Optional[str]
+    password_hash: str
+    company_id: UUID
+    manager_id: Optional[UUID]
     position: Optional[str]
-    account_created: Optional[str]
-    last_login: str    
+    account_created: Optional[datetime]
+    last_login: datetime    
     free_plan: bool
     task_limit: Optional[int]
     efficiency_score: float
@@ -49,7 +50,7 @@ class AccountCreate(BaseModel):
     email: str
     password: str
     manager_id: Optional[str]
-    position: str
+    position: Optional[str]
     free_plan: bool
     task_limit: Optional[int]
     company_id: Optional[str]
@@ -60,7 +61,7 @@ class AccountResponse(AccountBase):
         id (UUID): Unique identifier for the account, primary key.
         name (str): Name of the account.
         email (str, unique): Unique email address of the account.
-        password (str): Password of the account.
+        password_hash (str): Password of the account.
         manager_id (UUID, optional): Foreign key referencing the manager of the account, nullable.
         position (int): Position of the account within the company.
         free_plan (bool): Boolean indicating if the account is on a free plan.

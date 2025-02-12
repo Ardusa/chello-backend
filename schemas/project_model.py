@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 from uuid import UUID
@@ -22,9 +23,9 @@ class ProjectBase(BaseModel):
     company_id: UUID
     project_manager: Optional[UUID]
     
-    project_created: Optional[str]
-    project_started: Optional[str]
-    project_completed: Optional[str]
+    project_created: Optional[datetime]
+    project_started: Optional[datetime]
+    project_completed: Optional[datetime]
     is_finished: bool
     
 class ProjectCreate(BaseModel):
@@ -37,7 +38,7 @@ class ProjectCreate(BaseModel):
     """
     name: str
     description: Optional[str]
-    company_id: str
+    company_id: UUID
     project_manager: Optional[str]
 
 class ProjectResponse(ProjectBase):
