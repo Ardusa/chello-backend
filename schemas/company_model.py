@@ -15,15 +15,15 @@ class CompanyBase(BaseModel):
     founding_member: UUID
 
 
-class CompanyCreate(CompanyBase):
+class CompanyCreate(BaseModel):
     """
     Attributes:
-        id (UUID): Unique identifier for the company, primary key.
         name (str): Name of the company.
         founding_member (UUID): Foreign key referencing the founding member of the company.
     """
 
-    pass
+    name: str
+    founding_member: str
 
 
 class CompanyResponse(CompanyBase):

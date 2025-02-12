@@ -6,7 +6,7 @@ from services import get_db, task_service
 from sqlalchemy import func
 from collections import OrderedDict
 from typing import Optional, Dict
-from models import Project, Task, task_employee_association
+from models import Project, Task, task_account_association
 
 
 def create_project(
@@ -43,10 +43,10 @@ def load_projects(
         db.query(Project.id, func.count(Task.id).label("task_count"))
         .outerjoin(Task, Project.id == Task.project_id)
         .outerjoin(
-            task_employee_association, Task.id == task_employee_association.c.task_id
+            task_account_association, Task.id == task_account_association.c.task_id
         )
         .filter(
-            (task_employee_association.c.employee_id == employee_id)
+            (task_account_association.c.employee_id == employee_id)
             | (Project.project_manager == employee_id)
         )
         .group_by(Project.id)
