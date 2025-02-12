@@ -7,7 +7,7 @@ from .api_schemas import (
     CreateNewAccountForm
 )
 from .company_model import CompanyBase, CompanyCreate, CompanyResponse
-from .employee_model import EmployeeBase, EmployeeCreate, EmployeeResponse
+from .account_model import AccountBase, AccountCreate, AccountResponse
 from .project_model import ProjectBase, ProjectCreate, ProjectResponse
 from .task_model import TaskBase, TaskCreate, TaskResponse
 
@@ -21,9 +21,9 @@ __all__ = [
     "CompanyBase", 
     "CompanyCreate", 
     "CompanyResponse", 
-    "EmployeeBase", 
-    "EmployeeCreate", 
-    "EmployeeResponse", 
+    "AccountBase", 
+    "AccountCreate", 
+    "AccountResponse", 
     "ProjectBase", 
     "ProjectCreate", 
     "ProjectResponse", 

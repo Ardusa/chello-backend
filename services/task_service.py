@@ -1,100 +1,129 @@
 from collections import OrderedDict
+from typing import Optional
 import uuid
 from models import Task, Project
 from sqlalchemy.orm import Session
 from fastapi import Depends
 from schemas import task_model
-from services import get_db
-from models import task_employee_association
+from .db_service import get_db
+from .account_service import load_account
+from models import task_account_association
 
 
 def create_task(
     task: task_model.TaskCreate,
-    project_id: uuid.UUID,
     db: Session = Depends(get_db),
 ):
-    db_task = Task(
-        project_id=project_id,
+    """
+    Create a new task in the database. The task must be assigned to a project. 
+    """
+    new_task = Task(
         name=task.name,
         description=task.description,
-        parent_task_id=uuid.UUID(task.parent_task_id) if task.parent_task_id else None,
-        assigned_to=uuid.UUID(task.assigned_to) if task.assigned_to else None,
+        order=task.order,
     )
-
-    db.add(db_task)
-    db.commit()
-    db.refresh(db_task)
     
-    if task.assigned_to:
-        db.execute(
-            task_employee_association.insert().values(
-                task_id=db_task.id, employee_id=db_task.assigned_to
-            )
+    # load_project(project_id=project_id, db=db)
+    project_id = uuid.UUID(task.project_id)
+    from .project_service import load_project
+    load_project(project_id=project_id, db=db)
+    new_task.project_id = project_id
+    
+    assigned_to_id = uuid.UUID(task.assigned_to)
+    load_account(account_id=assigned_to_id, db=db)
+    new_task.assigned_to = assigned_to_id
+    
+    if task.parent_task_id:
+        parent_task_id = uuid.UUID(task.parent_task_id)
+        load_task(task_id=parent_task_id, db=db)
+        new_task.parent_task_id = parent_task_id
+    
+
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+
+    db.execute(
+        task_account_association.insert().values(
+            task_id=new_task.id, account_id=new_task.assigned_to
         )
-        db.commit()
+    )
+    db.commit()
 
-    return db_task
+    return new_task
 
 
-
-
-def load_task(task_id: str, db: Session = Depends(get_db)):
-    return db.query(Task).filter(Task.id == uuid.UUID(task_id)).first()
+def load_task(task_id: Optional[uuid.UUID] = None, task_id_str: Optional[str] = None, db: Session = Depends(get_db)) -> Task:
+    """
+    This function is used to load a task from the database. It will throw an error if the query returns no results.
+    """
+    
+    if task_id_str:
+        task_id = uuid.UUID(task_id_str)
+        
+    query = db.query(Task)
+    
+    if task_id:
+        query = query.filter(Task.id == task_id).first()
+        
+    if not query:
+        raise ValueError("Task not found: ", task_id)
+    
+    return query
 
 
 def load_project_tasks(
-    employee_id=None,
+    account_id=None,
     project_id=None,
     db: Session = Depends(get_db),
 ):
     """
-    Get all tasks relevant to a specific employee for a specific project.
+    Get all tasks relevant to a specific account for a specific project.
 
     Parameters:
-    employee_id (UUID, optional): The ID of the employee. If provided, the function will filter tasks to only include those assigned to this employee.
+    account_id (UUID, optional): The ID of the account. If provided, the function will filter tasks to only include those assigned to this account.
     project_id (UUID, optional): The ID of the project. If provided, the function will filter tasks to only include those within this project.
 
     Returns:
     dict:
-        - If both employee_id and project_id are provided, returns a dictionary where the keys are tasks and the values are lists of their subtasks.
-        - If only employee_id is provided, returns a dictionary where the keys are project IDs and the values are dictionaries. Each inner dictionary has tasks as keys and lists of their subtasks as values.
+        - If both account_id and project_id are provided, returns a dictionary where the keys are tasks and the values are lists of their subtasks.
+        - If only account_id is provided, returns a dictionary where the keys are project IDs and the values are dictionaries. Each inner dictionary has tasks as keys and lists of their subtasks as values.
         - If only project_id is provided, returns a dictionary where the keys are tasks and the values are lists of their subtasks.
-        - If neither employee_id nor project_id is provided, returns a dictionary where the keys are project IDs and the values are dictionaries. Each inner dictionary has tasks as keys and lists of their subtasks as values.
+        - If neither account_id nor project_id is provided, returns a dictionary where the keys are project IDs and the values are dictionaries. Each inner dictionary has tasks as keys and lists of their subtasks as values.
 
-    The function recursively builds the dictionary to include all subtasks and their subtasks, and so on. If employee_id is provided, only subtasks assigned to the employee are included.
+    The function recursively builds the dictionary to include all subtasks and their subtasks, and so on. If account_id is provided, only subtasks assigned to the account are included.
     """
 
     query = db.query(Task)
 
-    if employee_id and project_id:
+    if account_id and project_id:
         # If the project specified happens to be managed by the eployee, return all tasks in the project
         if project_id in [
             pid
             for (pid,) in db.query(Project.id)
-            .filter(Project.project_manager == employee_id)
+            .filter(Project.project_manager == account_id)
             .all()
         ]:
             query = query.filter(Task.project_id == project_id)
 
-        # If the employee is not a project manager, check if the employee is assigned to any tasks
+        # If the account is not a project manager, check if the account is assigned to any tasks
         else:
             query = (
                 db.query(Task)
                 .filter(Task.project_id == project_id)
-                .filter(Task.assigned_to == employee_id)
+                .filter(Task.assigned_to == account_id)
                 .order_by(Task.order)
                 .group_by(Task.project_id)
             )
-            print("Not project manager", query.all())
 
-    elif employee_id and not project_id:
+    elif account_id and not project_id:
         query = (
-            query.filter(Task.assigned_to == employee_id)
+            query.filter(Task.assigned_to == account_id)
             .order_by(Task.order)
             .group_by(Task.project_id)
         )
 
-    elif not employee_id and project_id:
+    elif not account_id and project_id:
         query = query.filter(Task.project_id == project_id).order_by(Task.order)
 
     else:
@@ -138,15 +167,15 @@ def load_project_tasks(
 
     tasks = query.all()
 
-    if employee_id and project_id:
-        # Order the project based on the employees role in the project.
+    if account_id and project_id:
+        # Order the project based on the accounts role in the project.
         project = OrderedDict()
         for task in tasks:
             project.update(build_task_dict(project, task))
         return project
 
-    elif employee_id and not project_id:
-        # Separate tasks into each project the employee is part of
+    elif account_id and not project_id:
+        # Separate tasks into each project the account is part of
         projects = OrderedDict()
         for task in tasks:
             if task.project_id not in projects:
@@ -156,7 +185,7 @@ def load_project_tasks(
             )
         return projects
 
-    elif not employee_id and project_id:
+    elif not account_id and project_id:
         # Sort all the tasks for one whole project
         project = OrderedDict()
         for task in tasks:
@@ -174,8 +203,11 @@ def load_project_tasks(
 
 
 def delete_task(task_id: uuid.UUID, db: Session = Depends(get_db)):
+    """
+    Delete a task from the database. This will also delete all subtasks of the task.
+    """
     db.query(Task).filter(Task.parent_task_id == task_id).delete()
     db.query(Task).filter(Task.id == task_id).delete()
-    db.query(task_employee_association).filter(task_employee_association.c.task_id == task_id).delete()
+    db.query(task_account_association).filter(task_account_association.c.task_id == task_id).delete()
     db.commit()
     return True

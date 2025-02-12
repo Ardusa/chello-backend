@@ -12,30 +12,43 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from schemas import (
+    account_model,
     api_schemas as api_schemas,
-    employee_model,
     project_model,
     task_model,
 )
 
-from services import (
-    db_service,
-    auth_service,
-    employee_service,
-    project_service,
-    task_service,
+from services.account_service import (
+    load_account,
+    create_account,
+    authenticate_account,
+    load_accounts,
 )
+from services.db_service import (
+    get_db,
+    fetch_table_data,
+    save_table_to_file,
+    convert_uuid_keys_to_str,
+)
+from services.auth_service import (
+    create_access_token,
+    create_refresh_token,
+    decode_jwt,
+)
+from services.project_service import (
+    load_project,
+    create_project,
+    load_projects,
+    delete_project,
+)
+from services.task_service import (
+    load_task,
+    create_task,
+    load_project_tasks,
+    delete_task,
+)
+
 from utils import password_utils
-
-
-# from dependency_detection import generate_DAG
-# from sklearn.ensemble import RandomForestRegressor
-# from sentence_transformers import SentenceTransformer
-
-# AI Models
-# encoder = SentenceTransformer("all-MiniLM-L6-v2")
-# model = RandomForestRegressor()
-
 
 app = FastAPI()
 app.add_middleware(
@@ -45,7 +58,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 os.makedirs("tables", exist_ok=True)
@@ -57,29 +69,37 @@ os.makedirs("tables", exist_ok=True)
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()  # Accept the WebSocket connection
     print("Connected to Client")
-    tables = ["tasks", "projects", "employees", "companies"]  # Adjust to your table names
+    tables = [
+        "tasks",
+        "projects",
+        "accounts",
+        "companies",
+    ]  # Adjust to your table names
 
     try:
         while True:
             for table in tables:
                 # Fetch the table data
-                table_data = db_service.fetch_table_data(table)
+                table_data = fetch_table_data(table)
                 print("Sending Table Data")
                 # Save the table data to a file
-                db_service.save_table_to_file(table, table_data)
-            
+                save_table_to_file(table, table_data)
+
             # Wait for 1 second before updating again
             await asyncio.sleep(1)
     except WebSocketDisconnect:
         print("WebSocket disconnected")
 
 
+# ? Verification Endpoints
+
+
 @app.post("/login", response_model=api_schemas.TokenResponse)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(db_service.get_db),
+    db: Session = Depends(get_db),
 ):
-    user = employee_service.authenticate_employee(
+    user = authenticate_account(
         email=form_data.username, password=form_data.password, db=db
     )
     if not user:
@@ -87,8 +107,8 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
 
-    access_token = auth_service.create_access_token(data={"sub": user.id})
-    refresh_token = auth_service.create_refresh_token(data={"sub": user.id})
+    access_token = create_access_token(data={"sub": user.id})
+    refresh_token = create_refresh_token(data={"sub": user.id})
 
     return {
         "access_token": access_token,
@@ -96,16 +116,29 @@ async def login(
     }
 
 
-@app.patch("/set-password/", response_model=api_schemas.MessageResponse)
-async def set_password(
-    form_data: api_schemas.SetPasswordForm, db: Session = Depends(db_service.get_db)
+@app.get(
+    "/verify-login/",
+    response_model=account_model.AccountResponse,
+    response_model_exclude={"password_hash"},
+)
+async def verify_login(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
 ):
-    user = employee_service.load_employee(employee_id=form_data.id, db=db)
+    payload = decode_jwt(token)
+    account = load_account(account_id=payload["sub"], db=db)
+    return account
+
+
+@app.patch("/set-password", response_model=api_schemas.MessageResponse)
+async def set_password(
+    form_data: api_schemas.SetPasswordForm, db: Session = Depends(get_db)
+):
+    user = load_account(account_id=form_data.id, db=db)
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid Link, Employee ID not found",
+            detail="Invalid Link, Account ID not found",
         )
 
     if not password_utils.verify_password(
@@ -121,158 +154,163 @@ async def set_password(
     return {"message": "Password created successfully"}
 
 
-@app.get(
-    "/employees/self",
-    response_model=employee_model.EmployeeResponse,
-    response_model_exclude={"password_hash"},
-)
-async def get_self_employee(
-    db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
-):
-    payload = auth_service.decode_jwt(token)
-    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
-    return employee
-
-
 @app.post("/refresh", response_model=api_schemas.TokenResponse)
 async def refresh_token(
     refresh_token_data: api_schemas.RefreshTokenForm,
-    db: Session = Depends(db_service.get_db),
+    db: Session = Depends(get_db),
 ):
     refresh_token = refresh_token_data.refresh_token
 
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    payload = auth_service.decode_jwt(refresh_token)
-    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
+    payload = decode_jwt(refresh_token)
+    account = load_account(account_id=payload["sub"], db=db)
 
-    if employee is None:
+    if account is None:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    new_access_token = auth_service.create_access_token(data={"sub": employee.id})
-    new_refresh_token = auth_service.create_refresh_token(data={"sub": employee.id})
+    new_access_token = create_access_token(data={"sub": account.id})
+    new_refresh_token = create_refresh_token(data={"sub": account.id})
     return {"access_token": new_access_token, "refresh_token": new_refresh_token}
 
 
-@app.put("/create-new-employee", response_model=api_schemas.MessageResponse)
-async def register_employee(
-    employee_data: employee_model.EmployeeCreate,
-    db: Session = Depends(db_service.get_db),
-):
-    """API endpoint for registering a new employee"""
-    try:
-        employee_service.create_employee(employee_data=employee_data, db=db)
-        return {"message": "Employee registered successfully"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=400, detail=f"Error creating employee: {str(e)}"
-        )
-
-
-@app.put("/register-account", response_model=api_schemas.MessageResponse)
-async def register_account(
-    employee_data: api_schemas.CreateNewAccountForm,
-    db: Session = Depends(db_service.get_db),
-):
-    """API endpoint for registering a new employee"""
-    print(employee_data)
-    try:
-        employee_service.register_account(employee_data=employee_data, db=db)
-        return {"message": "Employee registered successfully"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=400, detail=f"Error creating employee: {str(e)}"
-        )
-        
-@app.get("/employees/get-employees")
-async def get_employees(
-    db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
-):
-    payload = auth_service.decode_jwt(token)
-    manager = employee_service.load_employee(employee_id=payload["sub"], db=db)
-
-    if not manager:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    employees = employee_service.load_employees(manager, db=db)
-
-    if employees is None:
-        raise HTTPException(status_code=404, detail="Employee Search Failed")
-
-    return employees
-
-
-# @app.put("/employees/{employee_id}", response_model=employee_model.EmployeeResponse, response_model_exclude={"password_hash"})
-# async def update_employee(
-#     employee_data: employee_model.EmployeeCreate,
-#     db: Session = Depends(utils.get_db),
-#     token: str = Depends(oauth2_scheme)
-# ):
-#     """API endpoint for updating an existing employee"""
-
-#     payload = utils.decode_jwt(token)
-#     employee_id = payload["sub"]
-
-#     try:
-#         employee = (
-#             db.query(models.Employee).filter(models.Employee.id == employee_id).first()
-#         )
-#         if not employee:
-#             raise HTTPException(status_code=404, detail="Employee not found")
-
-#         employee.name = employee_data.name
-#         employee.email = employee_data.email
-#         employee.password_hash = utils.hash_password(employee_data.password)
-#         employee.company_id = employee_data.company_id
-#         employee.position = employee_data.position
-#         employee.manager_id = employee_data.manager_id
-
-#         db.commit()
-#         db.refresh(employee)
-#         return employee
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=400, detail=f"Error updating employee: {str(e)}"
-#         )
+# ? Account Endpoints
 
 
 @app.get(
-    "/verify-login/",
-    response_model=employee_model.EmployeeResponse,
+    "/accounts/self",
+    response_model=account_model.AccountResponse,
     response_model_exclude={"password_hash"},
 )
-async def verify_login(
-    db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
+async def get_self(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
 ):
-    payload = auth_service.decode_jwt(token)
-    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
+    payload = decode_jwt(token)
+    account = load_account(account_id=payload["sub"], db=db)
+    return account
 
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    return employee
+
+@app.put("/accounts/register-account", response_model=api_schemas.MessageResponse)
+async def register_account(
+    account_data: account_model.AccountCreate,
+    db: Session = Depends(get_db),
+):
+    """API endpoint for registering a new account"""
+    try:
+        create_account(account_data=account_data, db=db)
+        return {"message": "Account registered successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error creating account: {str(e)}")
+
+
+@app.put("/accounts/register-company-account", response_model=api_schemas.MessageResponse)
+async def register_employee(
+    employee_data: account_model.AccountCreate,
+    db: Session = Depends(get_db),
+):
+    """API endpoint for registering a new employee"""
+    try:
+        create_account(employee_data=employee_data, db=db)
+        return {"message": "Employee registered successfully"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Error creating employee: {str(e)}"
+        )
+
+
+@app.get("/accounts/get-accounts")
+async def get_accounts(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+):
+    payload = decode_jwt(token)
+    try:
+        manager = load_account(account_id=payload["sub"], db=db)
+        accounts = load_accounts(manager, db=db)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Error getting accounts: {str(e)}")
+
+
+    return accounts
+
+
+@app.get(
+    "/accounts/{account_id}",
+    response_model=account_model.AccountResponse,
+    response_model_exclude={"password_hash"},
+)
+async def get_account(
+    account_id: str,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
+):
+    decode_jwt(token)
+    account = load_account(account_id_str=account_id, db=db)
+    return account
+
+
+@app.put(
+    "/accounts/settings",
+    response_model=account_model.AccountResponse,
+    response_model_exclude={"password_hash"},
+)
+async def account_settings(
+    account_data: account_model.AccountCreate,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
+):
+    """API endpoint for updating an existing account"""
+
+    payload = decode_jwt(token)
+    account_id = payload["sub"]
+
+    # try:
+    #     account = (
+    #         db.query(Account).filter(models.Account.id == account_id).first()
+    #     )
+    #     if not account:
+    #         raise HTTPException(status_code=404, detail="Account not found")
+
+    #     account.name = account_data.name
+    #     account.email = account_data.email
+    #     account.password_hash = utils.hash_password(account_data.password)
+    #     account.company_id = account_data.company_id
+    #     account.position = account_data.position
+    #     account.manager_id = account_data.manager_id
+
+    #     db.commit()
+    #     db.refresh(account)
+    #     return account
+    # except Exception as e:
+    #     raise HTTPException(
+    #         status_code=400, detail=f"Error updating account: {str(e)}"
+    #     )
+
+
+# ? Project Endpoints
 
 
 @app.put("/projects/create", response_model=project_model.ProjectResponse)
 def create_new_project(
     request: project_model.ProjectCreate,
-    db: Session = Depends(db_service.get_db),
+    db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    auth_service.decode_jwt(token)
-    project = project_service.create_project(project=request, db=db)
+    decode_jwt(token)
+    project = create_project(project=request, db=db)
     return project
 
-@app.put("/projects/{project_id}/edit", response_model=project_model.ProjectResponse)
+
+@app.patch("/projects/{project_id}/", response_model=project_model.ProjectResponse)
 def edit_project(
-    request: project_model.ProjectCreate, 
-    project_id: str, 
-    db: Session = Depends(db_service.get_db), 
-    token: str = Depends(oauth2_scheme)
+    request: project_model.ProjectCreate,
+    project_id: str,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
 ):
-    auth_service.decode_jwt(token)
-    project = project_service.load_project(project_id_str=project_id, db=db)
-    
+    decode_jwt(token)
+    project = load_project(project_id_str=project_id, db=db)
+
     update_data = request.dict(exclude_unset=True)  # Only update provided fields
     for key, value in update_data.items():
         setattr(project, key, value)  # Update only changed fields
@@ -282,42 +320,25 @@ def edit_project(
     return project
 
 
-@app.get("/projects/get-projects")
-async def get_projects_assigned(
-    db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
-):
-    payload = auth_service.decode_jwt(token)
-    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
-
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    assigned_projects = project_service.load_projects(employee_id=employee.id, db=db)
-
-    if assigned_projects is None:
-        raise HTTPException(status_code=404, detail="Project Search Failed")
-
-    return assigned_projects
-
 @app.get("/projects/{project_id}/")
-async def get_project_details(
+async def get_project(
     project_id: str,
-    db: Session = Depends(db_service.get_db),
+    db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    payload = auth_service.decode_jwt(token)
-    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
-    project = project_service.load_project(project_id_str=project_id, db=db)
-    
+    payload = decode_jwt(token)
+    account = load_account(account_id=payload["sub"], db=db)
+    project = load_project(project_id_str=project_id, db=db)
+
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    display_tasks = task_service.load_project_tasks(
-        project_id=project.id, employee_id=employee.id, db=db
+    display_tasks = load_project_tasks(
+        project_id=project.id, account_id=account.id, db=db
     )
-    
+
     try:
-        display_tasks_json = db_service.convert_uuid_keys_to_str(display_tasks)
+        display_tasks_json = convert_uuid_keys_to_str(display_tasks)
     except TypeError as e:
         print(f"Error converting display_tasks to JSON: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
@@ -325,99 +346,84 @@ async def get_project_details(
     return {"project": project.__dict__, "tasks": display_tasks_json}
 
 
-@app.post("/projects/create-task", response_model=task_model.TaskResponse)
-def create_task(
-    request: task_model.TaskCreate, 
-    db: Session = Depends(db_service.get_db), 
-    token: str = Depends(oauth2_scheme)
+@app.delete("/projects/{project_id}", response_model=api_schemas.MessageResponse)
+def delete__project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
 ):
-    auth_service.decode_jwt(token)
-    project = project_service.load_project(project_id_str=request.project_id, db=db)
+    decode_jwt(token)
+    project = load_project(project_id_str=project_id, db=db)
 
-    task = task_service.create_task(
-        task=request,
-        project_id=project.id,
-        db=db
-    )
-    
-    task.__dict__["assigned_to"] = request.assigned_to
-    print("task: ", task.__dict__)
+    delete_project(project_id=project.id, db=db)
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return {"message": "Project deleted successfully"}
+
+
+@app.get("/projects/get-projects")
+async def get_projects(
+    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
+):
+    payload = decode_jwt(token)
+    account = load_account(account_id=payload["sub"], db=db)
+
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    assigned_projects = load_projects(account_id=account.id, db=db)
+
+    if assigned_projects is None:
+        raise HTTPException(status_code=404, detail="Project Search Failed")
+
+    return assigned_projects
+
+
+# ? Task Endpoints
+
+
+@app.post("/tasks/create-task", response_model=task_model.TaskResponse)
+def create_new_task(
+    request: task_model.TaskCreate,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
+):
+    decode_jwt(token)
+    print("Request: ", request)
+    task = create_task(task=request, db=db)
 
     return task
 
-@app.delete("/tasks/{task_id}/delete", response_model=api_schemas.MessageResponse)
-def delete_task(
+
+@app.delete("/tasks/{task_id}", response_model=api_schemas.MessageResponse)
+def delete__task(
     task_id: str,
-    db: Session = Depends(db_service.get_db),
+    db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    auth_service.decode_jwt(token)
-    task = task_service.load_task(task_id=task_id, db=db)
-    
-    task_service.delete_task(task_id=task.id, db=db)
+    decode_jwt(token)
+    task = load_task(task_id_str=task_id, db=db)
+
+    delete_task(task_id=task.id, db=db)
 
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-
     return {"message": "Task deleted successfully"}
-
-
-@app.put("/projects/{project_id}/tasks")
-def get_project_tasks(
-    project_id: str,
-    db: Session = Depends(db_service.get_db),
-    token: str = Depends(oauth2_scheme),
-):
-    payload = auth_service.decode_jwt(token)
-    employee = employee_service.load_employee(employee_id=payload["sub"], db=db)
-    project = project_service.load_project(project_id_str=project_id, db=db)
-    tasks = task_service.load_project_tasks(
-        project_id=project.id, employee_id=employee.id, db=db
-    )
-
-    if tasks is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    return tasks
-
-@app.get("/employees/{employee_id}", response_model=employee_model.EmployeeResponse, response_model_exclude={"password_hash"})
-async def get_employee(
-    employee_id: str,
-    db: Session = Depends(db_service.get_db), token: str = Depends(oauth2_scheme)
-):
-    auth_service.decode_jwt(token)
-    employee = employee_service.load_employee(employee_id_str=employee_id, db=db)
-    return employee
 
 
 @app.get("/tasks/{task_id}", response_model=task_model.TaskResponse)
 def get_task(
     task_id: str,
-    db: Session = Depends(db_service.get_db),
+    db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    auth_service.decode_jwt(token)
-    task = task_service.load_task(task_id=task_id, db=db)
+    decode_jwt(token)
+    task = load_task(task_id_str=task_id, db=db)
 
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     return task
-
-@app.delete("/projects/{project_id}/delete", response_model=api_schemas.MessageResponse)
-def delete_project(
-    project_id: str,
-    db: Session = Depends(db_service.get_db),
-    token: str = Depends(oauth2_scheme),
-):
-    auth_service.decode_jwt(token)
-    project = project_service.load_project(project_id_str=project_id, db=db)
-    
-    project_service.delete_project(project_id=project.id, db=db)
-
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-
-    return {"message": "Project deleted successfully"}
