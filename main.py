@@ -11,41 +11,30 @@ from fastapi import (
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from schemas import (
-    account_model,
-    api_schemas as api_schemas,
-    project_model,
-    task_model,
-)
+from schemas import account_model, api_schemas, project_model, task_model, company_model
 
-from services.account_service import (
-    load_account,
-    create_account,
-    authenticate_account,
-    load_accounts,
-)
-from services.db_service import (
-    get_db,
-    fetch_table_data,
-    save_table_to_file,
-    convert_uuid_keys_to_str,
-)
-from services.auth_service import (
-    create_access_token,
-    create_refresh_token,
-    decode_jwt,
-)
-from services.project_service import (
-    load_project,
-    create_project,
-    load_projects,
-    delete_project,
-)
-from services.task_service import (
+from services import (
     load_task,
     create_task,
     load_project_tasks,
     delete_task,
+    load_company,
+    load_project,
+    create_project,
+    load_projects,
+    delete_project,
+    create_access_token,
+    create_refresh_token,
+    decode_jwt,
+    get_db,
+    fetch_table_data,
+    save_table_to_file,
+    convert_uuid_keys_to_str,
+    load_account,
+    create_account,
+    authenticate_account,
+    load_accounts,
+    create_company,
 )
 
 from utils import password_utils
@@ -99,13 +88,17 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    user = authenticate_account(
-        email=form_data.username, password=form_data.password, db=db
-    )
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+    
+    try:
+        user = authenticate_account(
+            email=form_data.username, password=form_data.password, db=db
         )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+
 
     access_token = create_access_token(data={"sub": user.id})
     refresh_token = create_refresh_token(data={"sub": user.id})
@@ -124,8 +117,11 @@ async def login(
 async def verify_login(
     db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
 ):
-    payload = decode_jwt(token)
-    account = load_account(account_id=payload["sub"], db=db)
+    try:
+        payload = decode_jwt(token)
+        account = load_account(account_id=payload["sub"], db=db)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
     return account
 
 
@@ -133,9 +129,9 @@ async def verify_login(
 async def set_password(
     form_data: api_schemas.SetPasswordForm, db: Session = Depends(get_db)
 ):
-    user = load_account(account_id=form_data.id, db=db)
-
-    if not user:
+    try:
+        user = load_account(account_id=form_data.id, db=db)
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid Link, Account ID not found",
@@ -164,11 +160,15 @@ async def refresh_token(
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
-    payload = decode_jwt(refresh_token)
-    account = load_account(account_id=payload["sub"], db=db)
-
-    if account is None:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    try:
+        payload = decode_jwt(refresh_token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        account = load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
 
     new_access_token = create_access_token(data={"sub": account.id})
     new_refresh_token = create_refresh_token(data={"sub": account.id})
@@ -183,28 +183,37 @@ async def refresh_token(
     response_model=account_model.AccountResponse,
     response_model_exclude={"password_hash"},
 )
-async def get_self(
-    db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
-):
-    payload = decode_jwt(token)
-    account = load_account(account_id=payload["sub"], db=db)
+async def get_self(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        account = load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
     return account
 
 
-@app.put("/accounts/register-account", response_model=api_schemas.MessageResponse)
+@app.put("/accounts/register-account", response_model=account_model.AccountResponse, response_model_exclude={"password_hash"})
 async def register_account(
     account_data: account_model.AccountCreate,
     db: Session = Depends(get_db),
 ):
     """API endpoint for registering a new account"""
     try:
-        create_account(account_data=account_data, db=db)
-        return {"message": "Account registered successfully"}
+        account = create_account(account_data=account_data, db=db)
+        return account
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error creating account: {str(e)}")
 
 
-@app.put("/accounts/register-company-account", response_model=api_schemas.MessageResponse)
+@app.put(
+    "/accounts/register-company-account", response_model=api_schemas.MessageResponse
+)
 async def register_employee(
     employee_data: account_model.AccountCreate,
     db: Session = Depends(get_db),
@@ -230,7 +239,6 @@ async def get_accounts(
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Error getting accounts: {str(e)}")
 
-
     return accounts
 
 
@@ -244,8 +252,21 @@ async def get_account(
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    decode_jwt(token)
-    account = load_account(account_id_str=account_id, db=db)
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    try:
+        account = load_account(account_id_str=account_id, db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="That account was not found")
+    
     return account
 
 
@@ -261,8 +282,15 @@ async def account_settings(
 ):
     """API endpoint for updating an existing account"""
 
-    payload = decode_jwt(token)
-    account_id = payload["sub"]
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
 
     # try:
     #     account = (
@@ -296,8 +324,17 @@ def create_new_project(
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    decode_jwt(token)
-    project = create_project(project=request, db=db)
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    project = create_project(project_data=request, db=db)
     return project
 
 
@@ -308,7 +345,17 @@ def edit_project(
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    decode_jwt(token)
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    
     project = load_project(project_id_str=project_id, db=db)
 
     update_data = request.dict(exclude_unset=True)  # Only update provided fields
@@ -326,8 +373,16 @@ async def get_project(
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    payload = decode_jwt(token)
-    account = load_account(account_id=payload["sub"], db=db)
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        account = load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
     project = load_project(project_id_str=project_id, db=db)
 
     if not project:
@@ -337,11 +392,7 @@ async def get_project(
         project_id=project.id, account_id=account.id, db=db
     )
 
-    try:
-        display_tasks_json = convert_uuid_keys_to_str(display_tasks)
-    except TypeError as e:
-        print(f"Error converting display_tasks to JSON: {e}")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+    display_tasks_json = convert_uuid_keys_to_str(display_tasks)
 
     return {"project": project.__dict__, "tasks": display_tasks_json}
 
@@ -352,7 +403,16 @@ def delete__project(
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    decode_jwt(token)
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
     project = load_project(project_id_str=project_id, db=db)
 
     delete_project(project_id=project.id, db=db)
@@ -367,16 +427,17 @@ def delete__project(
 async def get_projects(
     db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)
 ):
-    payload = decode_jwt(token)
-    account = load_account(account_id=payload["sub"], db=db)
-
-    if not account:
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        account = load_account(account_id=payload["sub"], db=db)
+    except Exception:
         raise HTTPException(status_code=404, detail="Account not found")
 
     assigned_projects = load_projects(account_id=account.id, db=db)
-
-    if assigned_projects is None:
-        raise HTTPException(status_code=404, detail="Project Search Failed")
 
     return assigned_projects
 
@@ -390,8 +451,16 @@ def create_new_task(
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    decode_jwt(token)
-    print("Request: ", request)
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
     task = create_task(task=request, db=db)
 
     return task
@@ -403,7 +472,16 @@ def delete__task(
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    decode_jwt(token)
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
     task = load_task(task_id_str=task_id, db=db)
 
     delete_task(task_id=task.id, db=db)
@@ -420,10 +498,65 @@ def get_task(
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
-    decode_jwt(token)
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
     task = load_task(task_id_str=task_id, db=db)
 
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     return task
+
+
+# ? Company Endpoints
+
+
+@app.put("/companies/create")
+def create_new_company(
+    company_data: company_model.CompanyCreate,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
+):
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    company = create_company(company_data=company_data, db=db)
+    return company
+
+
+@app.get("/companies/logo")
+def get_company_logo(
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
+):
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token is invalid or expired: {str(e)}")
+    
+    try:
+        account = load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        company = load_company(company_id=account.company_id, db=db)
+    except Exception:
+        return ""
+
+    return company.logo

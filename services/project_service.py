@@ -12,23 +12,23 @@ from models import Project, Task, task_account_association
 
 
 def create_project(
-    project: project_model.ProjectCreate, db: Session = Depends(get_db)
+    project_data: project_model.ProjectCreate, db: Session = Depends(get_db)
 ) -> Project:
     """
     Create a new project in the database. 
     """
     new_project = Project(
-        name=project.name,
-        description=project.description,
+        name=project_data.name,
+        description=project_data.description,
     )
     
-    project_manager_id = uuid.UUID(project.project_manager)
+    project_manager_id = uuid.UUID(project_data.project_manager)
     load_account(account_id=project_manager_id, db=db)
     new_project.project_manager = project_manager_id
     
-    # company_id = uuid.UUID(project.company_id)
-    load_company(company_id=project.company_id, db=db)
-    new_project.company_id = project.company_id
+    if project_data.company_id:
+        load_company(company_id=project_data.company_id, db=db)
+        new_project.company_id = project_data.company_id
     
     db.add(new_project)
     db.commit()

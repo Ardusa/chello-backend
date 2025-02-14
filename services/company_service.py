@@ -36,10 +36,13 @@ def create_company(
     Create a new company in the database. 
     """
     new_company = Company(
-        name=company_data["name"],
-        email=company_data["email"],
-        password_hash=company_data["password_hash"],
+        name=company_data.name,
+        founding_member=uuid.UUID(company_data.founding_member),
+        task_limit=company_data.task_limit,
+        logo=company_data.logo,
     )
+    
+    print(new_company)
     
     db.add(new_company)
     db.commit()
@@ -66,3 +69,13 @@ def create_company_with_details(
     db.refresh(new_company)
     
     return new_company
+
+def fetch_logo(
+    company_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> Optional[str]:
+    """
+    Fetch the logo of a company from the database.
+    """
+    company = load_company(company_id=company_id, db=db)
+    return company.logo

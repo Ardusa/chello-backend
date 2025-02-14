@@ -10,7 +10,7 @@ class ProjectBase(BaseModel):
         name (str): Name of the project.
         description (str, optional): Description of the project.
         company_id (UUID): Foreign key referencing the company the project belongs to.
-        project_manager (UUID, optional): Foreign key referencing the manager of the project.
+        project_manager (UUID): Foreign key referencing the manager of the project.
         project_created (DateTime): Date and time the project was created.
         project_started (DateTime, optional): Date and time the project was started.
         project_completed (DateTime, optional): Date and time the project was completed.
@@ -20,8 +20,8 @@ class ProjectBase(BaseModel):
     name: str
     description: Optional[str]
     
-    company_id: UUID
-    project_manager: Optional[UUID]
+    company_id: Optional[UUID]
+    project_manager: UUID
     
     project_created: Optional[datetime]
     project_started: Optional[datetime]
@@ -34,12 +34,12 @@ class ProjectCreate(BaseModel):
         name (str): Name of the project.
         description (str, optional): Description of the project.
         company_id (UUID): Foreign key referencing the company the project belongs to.
-        project_manager (UUID, optional): Foreign key referencing the manager of the project
+        project_manager (UUID): Foreign key referencing the manager of the project
     """
     name: str
     description: Optional[str]
-    company_id: UUID
-    project_manager: Optional[str]
+    company_id: Optional[UUID]
+    project_manager: str
 
 class ProjectResponse(ProjectBase):
     """

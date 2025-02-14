@@ -24,7 +24,7 @@ class AccountBase(BaseModel):
     name: str
     email: str
     password_hash: str
-    company_id: UUID
+    company_id: Optional[UUID]
     manager_id: Optional[UUID]
     position: Optional[str]
     account_created: Optional[datetime]
@@ -39,11 +39,12 @@ class AccountCreate(BaseModel):
         name (str): Name of the account.
         email (str): Email address of the account.
         password (str): Password of the account.
-        manager_id (UUID, optional): Foreign key referencing the manager of the account, nullable.
+        manager_id (str, optional): Foreign key referencing the manager of the account, nullable.
         position (str): Position of the account within the company.
         free_plan (bool): Boolean indicating if the account is on a free plan.
         task_limit (int, optional): Maximum number of tasks the account can create.
-        company_id (UUID, optional): Foreign key referencing the company the account
+        company_id (str, optional): Foreign key referencing the company the account belongs to.
+        create_company (bool): Boolean indicating if a new company should be created.
     """
     
     name: str
@@ -54,6 +55,7 @@ class AccountCreate(BaseModel):
     free_plan: bool
     task_limit: Optional[int]
     company_id: Optional[str]
+    create_company: bool = False
 
 class AccountResponse(AccountBase):
     """

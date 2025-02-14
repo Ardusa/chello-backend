@@ -44,9 +44,9 @@ class TaskCreate(BaseModel):
     Attributes:
         name (str): Name of the task.
         description (str): Description of the task.
-        project_id (UUID): Foreign key referencing the project the task belongs to.
-        assigned_to (UUID): Foreign key referencing the account the task is assigned to.
-        parent_task_id (UUID, optional): Foreign key referencing the parent task of the task.
+        project_id (str): Foreign key referencing the project the task belongs to.
+        assigned_to (str): Foreign key referencing the account the task is assigned to.
+        parent_task_id (str, optional): Foreign key referencing the parent task of the task.
         order (int): Order of the task within the project.
     """
     name: str

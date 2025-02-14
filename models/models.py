@@ -36,7 +36,7 @@ class Account(Base):
         email (str, unique): Unique email address of the Account.
         password_hash (str): Hashed password of the Account.
 
-        company_id (UUID): Foreign key referencing the company the Account belongs to. Given to all to allow smooth transition from individual to company accounts.
+        company_id (UUID, optional): Foreign key referencing the company the Account belongs to.
         manager_id (UUID, optional): Foreign key referencing the manager of the Account, nullable.
         position (str, optional): Position of the Account within the company.
 
@@ -60,8 +60,8 @@ class Account(Base):
     company_id = Column(
         UUID(as_uuid=True),
         ForeignKey("companies.id"),
-        nullable=False,
-        default=uuid.uuid4,
+        nullable=True,
+        # default=uuid.uuid4,
     )
     manager_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=True)
     position = Column(String, nullable=True)
@@ -72,7 +72,7 @@ class Account(Base):
     last_login = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
 
     free_plan = Column(Boolean, default=True, nullable=False)
-    task_limit = Column(Integer, default=0, nullable=True)
+    task_limit = Column(Integer, nullable=True)
 
     efficiency_score = Column(Double, default=1.0, nullable=False)
     tasks = relationship(
@@ -134,8 +134,8 @@ class Project(Base):
         name (str): Name of the project.
         description (str, optional): Description of the project.
 
-        company_id (UUID): Foreign key referencing the company the project belongs to.
-        project_manager (UUID, optional): Foreign key referencing the manager of the project.
+        company_id (UUID, optional): Foreign key referencing the company the project belongs to.
+        project_manager (UUID): Foreign key referencing the manager of the project.
 
         project_created (DateTime): Date and time the project was created.
         project_started (DateTime, optional): Date and time the project was started.
@@ -151,9 +151,9 @@ class Project(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
 
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
     project_manager = Column(
-        UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False
     )
     
     project_created = Column(
@@ -176,7 +176,10 @@ class Company(Base):
 
         accounts (List(Account)): List of accounts in the company.
         projects (List(Project)): List of projects in the company.
+        
         task_limit (int, optional): Maximum number of tasks the company can create.
+        
+        logo (str, optional): base64 image of the company logo.
     """
     
     __tablename__ = "companies"
@@ -189,4 +192,6 @@ class Company(Base):
     accounts = relationship("Account", backref="company", foreign_keys="[Account.company_id]")
     projects = relationship("Project", backref="company", foreign_keys="[Project.company_id]")
     
-    task_limit = Column(Integer, default=0, nullable=True)
+    task_limit = Column(Integer, default=0, nullable=False)
+    
+    logo = Column(String, nullable=True)

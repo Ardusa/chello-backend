@@ -13,7 +13,8 @@ from utils import verify_password
 
 
 def create_account(
-    account_data: account_model.AccountCreate, db: Session = Depends(get_db)
+    account_data: account_model.AccountCreate,
+    db: Session = Depends(get_db)
 ) -> Account:
     """
     Create a new account in the database.
@@ -38,11 +39,14 @@ def create_account(
         load_company(company_id=company_id, db=db)
         new_account.company_id = company_id
         
+    if not account_data.create_company:
+        new_account.company_id = None
+        
     db.add(new_account)
     db.commit()
     db.refresh(new_account)
     
-    if not account_data.company_id:
+    if not account_data.company_id and account_data.create_company:
         company_data = CompanyBase(
             id=new_account.company_id,
             name=new_account.name,
@@ -59,7 +63,7 @@ def load_account(
     account_id_str: Optional[str] = None,
     email: Optional[str] = None,
     db: Session = Depends(get_db),
-) -> Optional[Account]:
+) -> Account:
     """
     This function is used to load an account from the database. It will throw an error if the query returns no results.
     """
