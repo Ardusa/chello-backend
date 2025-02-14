@@ -26,6 +26,7 @@ def load_company(
     if not query:
         raise ValueError("Company not found: ", company_id)
     
+    print(query)    
     return query
 
 def create_company(
