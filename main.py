@@ -11,6 +11,7 @@ from fastapi import (
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 from schemas import account_model, api_schemas, project_model, task_model, company_model
 
 from services import (
@@ -108,7 +109,7 @@ async def login(
 
 
 @app.get(
-    "/verify-login/",
+    "/verify-login",
     response_model=account_model.AccountResponse,
 )
 async def verify_login(
@@ -117,6 +118,9 @@ async def verify_login(
     try:
         payload = decode_jwt(token)
         account = load_account(account_id=payload["sub"], db=db)
+        account.last_login = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(account)
     except Exception as e:
         raise HTTPException(
             status_code=401, detail=f"Token is invalid or expired: {str(e)}"
