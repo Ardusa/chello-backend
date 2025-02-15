@@ -18,6 +18,7 @@ class AccountBase(BaseModel):
         account_created (DateTime, optional): Date and time the account was created.
         last_login (DateTime): Date and time the account was last logged into.
         efficiency_score (float): Score indicating the efficiency of the account.
+        work_times (dict): Dictionary with days of the week as keys and a list of tuples (clock_in, clock_out) as values.
     """
     
     id: UUID
@@ -32,6 +33,7 @@ class AccountBase(BaseModel):
     free_plan: bool
     task_limit: Optional[int]
     efficiency_score: float
+    work_times: dict
 
 class AccountCreate(BaseModel):
     """
@@ -71,6 +73,7 @@ class AccountResponse(BaseModel):
         account_created (DateTime, optional): Date and time the account was created.
         last_login (DateTime): Date and time the account was last logged into.
         efficiency_score (float): Score indicating the efficiency of the account.
+        work_times (dict): Dictionary with days of the week as keys and a list of tuples (clock_in, clock_out) as values.
     """
 
     id: UUID
@@ -84,6 +87,7 @@ class AccountResponse(BaseModel):
     account_created: Optional[datetime]
     last_login: datetime
     efficiency_score: float
+    work_times: dict
 
     class Config:
         from_attributes = True
