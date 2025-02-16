@@ -66,7 +66,7 @@ def load_task(task_id: Optional[uuid.UUID] = None, task_id_str: Optional[str] = 
     if task_id:
         query = query.filter(Task.id == task_id).first()
         
-    if not query:
+    if not query or not task_id:
         raise ValueError("Task not found: ", task_id)
     
     return query

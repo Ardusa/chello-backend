@@ -78,7 +78,7 @@ def load_account(
     elif email:
         query = query.filter(Account.email == email).first()
     
-    if not query:
+    if not query or (not account_id and not email):
         raise ValueError(
             "Account not found: ", account_id if account_id else email
         )

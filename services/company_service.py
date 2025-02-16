@@ -11,7 +11,7 @@ def load_company(
     company_id: Optional[uuid.UUID] = None,
     company_id_str: Optional[str] = None,
     db: Session = Depends(get_db),
-) -> Optional[Company]:
+) -> Company:
     """
     This function is used to load a company from the database. It will throw an error if the query returns no results.
     """
@@ -23,10 +23,9 @@ def load_company(
     if company_id:
         query = query.filter(Company.id == company_id).first()
         
-    if not query:
+    if not query or not company_id:
         raise ValueError("Company not found: ", company_id)
-    
-    print(query)    
+
     return query
 
 def create_company(

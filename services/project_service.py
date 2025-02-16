@@ -52,7 +52,7 @@ def load_project(
     if project_id:
         query = query.filter(Project.id == project_id).first()
 
-    if not query:
+    if not query or not project_id:
         raise ValueError(
             "Project not found: ", project_id
         )
