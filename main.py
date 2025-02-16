@@ -81,6 +81,11 @@ async def websocket_endpoint(websocket: WebSocket):
         print("WebSocket disconnected")
 
 
+@app.get("/")
+async def root():
+    return {"message": "API is working"}
+
+
 # ? Verification Endpoints
 
 
