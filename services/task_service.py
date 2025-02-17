@@ -149,20 +149,24 @@ def load_project_tasks(
             project[task.id] = OrderedDict()
 
         else:
-
             def recursive_insert(project, task):
                 for id, value in project.items():
                     if task.parent_task_id == id:
                         if isinstance(value, OrderedDict):
                             value[task.id] = OrderedDict()
                             return True
+                    elif isinstance(value, OrderedDict):
+                        if recursive_insert(value, task):
+                            return True
                 return False
 
             if not recursive_insert(project, task):
+                print("Task not found: ", task.parent_task_id)
                 raise ValueError("Task Parent Not Present")
 
         # ! Does not work
         # sort_recursive_dict(project)
+        
         return project
 
     tasks = query.all()
