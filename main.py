@@ -533,6 +533,43 @@ def get_task(
     return task
 
 
+@app.patch("/tasks/update-task", response_model=task_model.TaskResponse)
+def update_task(
+    request: task_model.TaskUpdate,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
+):
+    try:
+        payload = decode_jwt(token)
+    except Exception as e:
+        raise HTTPException(
+            status_code=401, detail=f"Token is invalid or expired: {str(e)}"
+        )
+
+    try:
+        load_account(account_id=payload["sub"], db=db)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    task = load_task(task_id_str=request.id, db=db)
+
+    from uuid import UUID
+
+    update_data = request.model_dump(exclude_unset=True)
+    update_data['id'] = UUID(update_data['id'])
+    update_data['project_id'] = UUID(update_data['project_id'])
+    update_data['assigned_to'] = UUID(update_data['assigned_to'])
+    if update_data.get('parent_task_id'):
+        update_data['parent_task_id'] = UUID(update_data['parent_task_id'])
+    
+    for key, value in update_data.items():
+        setattr(task, key, value)
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+
 # ? Company Endpoints
 
 
