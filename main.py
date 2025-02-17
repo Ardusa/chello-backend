@@ -556,12 +556,12 @@ def update_task(
     from uuid import UUID
 
     update_data = request.model_dump(exclude_unset=True)
-    update_data['id'] = UUID(update_data['id'])
-    update_data['project_id'] = UUID(update_data['project_id'])
-    update_data['assigned_to'] = UUID(update_data['assigned_to'])
-    if update_data.get('parent_task_id'):
-        update_data['parent_task_id'] = UUID(update_data['parent_task_id'])
-    
+    update_data["id"] = UUID(update_data["id"])
+    update_data["project_id"] = UUID(update_data["project_id"])
+    update_data["assigned_to"] = UUID(update_data["assigned_to"])
+    if update_data.get("parent_task_id"):
+        update_data["parent_task_id"] = UUID(update_data["parent_task_id"])
+
     for key, value in update_data.items():
         setattr(task, key, value)
 
