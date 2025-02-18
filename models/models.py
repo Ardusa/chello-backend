@@ -39,6 +39,7 @@ class Account(Base):
         company_id (UUID, optional): Foreign key referencing the company the Account belongs to.
         manager_id (UUID, optional): Foreign key referencing the manager of the Account, nullable.
         position (str, optional): Position of the Account within the company.
+        manager (bool): Boolean indicating if the Account is a manager.
 
         account_created (DateTime): Date and time the Account was created.
         last_login (DateTime): Date and time the Account last logged in.
@@ -65,6 +66,13 @@ class Account(Base):
     )
     manager_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=True)
     position = Column(String, nullable=True)
+
+    @property
+    def manager(self):
+        if self.company is None:
+            return False
+        return any(account.manager_id == self.id for account in self.company.accounts)
+
 
     account_created = Column(
         DateTime, default=datetime.now(timezone.utc), nullable=False

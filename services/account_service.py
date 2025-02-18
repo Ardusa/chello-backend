@@ -20,6 +20,7 @@ def create_account(
     Create a new account in the database.
     This is for creating any account, whether it is a company account or not.
     """
+    
     new_account = Account(
         name=account_data.name,
         email=account_data.email,

@@ -42,8 +42,6 @@ def create_company(
         logo=company_data.logo,
     )
     
-    print(new_company)
-    
     db.add(new_company)
     db.commit()
     db.refresh(new_company)

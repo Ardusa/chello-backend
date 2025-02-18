@@ -214,6 +214,20 @@ async def register_account(
     db: Session = Depends(get_db),
 ):
     """API endpoint for registering a new account"""
+        
+    existing_account = False
+        
+    try:
+        existing_account = load_account(email=account_data.email, db=db)
+    except Exception as e:
+        existing_account = None
+    
+    if existing_account:
+        print(existing_account)
+        raise HTTPException(
+            status_code=400, detail="An account already exists with that email"
+        )
+    
     try:
         account = create_account(account_data=account_data, db=db)
         return account
@@ -286,7 +300,7 @@ async def get_account(
     response_model=account_model.AccountResponse,
 )
 async def update_account(
-    account_data: account_model.AccountResponse,
+    account_data: account_model.AccountUpdate,
     db: Session = Depends(get_db),
     token: str = Depends(oauth2_scheme),
 ):
@@ -304,12 +318,28 @@ async def update_account(
         raise HTTPException(status_code=404, detail="Account not found")
 
     try:
-        existing_account = load_account(account_id=account_data.id, db=db)
+        existing_account = load_account(account_id_str=account_data.id, db=db)
     except Exception:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    update_data = account_data.dict(exclude_unset=True)
+    from uuid import UUID
+    
+    update_data = account_data.model_dump(exclude_unset=True, exclude={"manager"})
+    
+    # print(update_data)
+    
+    update_data["id"] = UUID(update_data["id"])
+    if update_data["manager_id"]:
+        print("updating manager id")
+        update_data["manager_id"] = UUID(update_data["manager_id"])
+    if update_data["company_id"]:
+        print("updating company id")
+        update_data["company_id"] = UUID(update_data["company_id"])
+    
+    print(update_data)
+    
     for key, value in update_data.items():
+        print("setting: ", key, value)
         setattr(existing_account, key, value)
 
     db.commit()
@@ -363,7 +393,13 @@ def edit_project(
 
     project = load_project(project_id_str=project_id, db=db)
 
-    update_data = request.dict(exclude_unset=True)  # Only update provided fields
+    update_data = request.dict(exclude_unset=True)
+    
+    # ! TODO: Fix this
+    
+    # update_data["id"] = project.id
+    # if update_data.get("project_manager"):
+    #     update_data["project_manager"] 
     for key, value in update_data.items():
         setattr(project, key, value)  # Update only changed fields
 

@@ -95,6 +95,7 @@ class TaskUpdate(BaseModel):
         task_human_estimated_man_hours (float, optional): Estimated time of completion, given by the task creator.
         task_AI_estimated_man_hours (float, optional): Estimated time of completion, given by the neural network.
     """
+    
     id: str
     name: Optional[str]
     description: Optional[str]
