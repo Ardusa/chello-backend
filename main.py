@@ -214,20 +214,18 @@ async def register_account(
     db: Session = Depends(get_db),
 ):
     """API endpoint for registering a new account"""
-        
-    existing_account = False
-        
+
     try:
         existing_account = load_account(email=account_data.email, db=db)
-    except Exception as e:
+    except Exception:
         existing_account = None
-    
+
     if existing_account:
         print(existing_account)
         raise HTTPException(
             status_code=400, detail="An account already exists with that email"
         )
-    
+
     try:
         account = create_account(account_data=account_data, db=db)
         return account
@@ -323,11 +321,9 @@ async def update_account(
         raise HTTPException(status_code=404, detail="Account not found")
 
     from uuid import UUID
-    
+
     update_data = account_data.model_dump(exclude_unset=True, exclude={"manager"})
-    
-    # print(update_data)
-    
+
     update_data["id"] = UUID(update_data["id"])
     if update_data["manager_id"]:
         print("updating manager id")
@@ -335,9 +331,9 @@ async def update_account(
     if update_data["company_id"]:
         print("updating company id")
         update_data["company_id"] = UUID(update_data["company_id"])
-    
+
     print(update_data)
-    
+
     for key, value in update_data.items():
         print("setting: ", key, value)
         setattr(existing_account, key, value)
@@ -394,12 +390,7 @@ def edit_project(
     project = load_project(project_id_str=project_id, db=db)
 
     update_data = request.dict(exclude_unset=True)
-    
-    # ! TODO: Fix this
-    
-    # update_data["id"] = project.id
-    # if update_data.get("project_manager"):
-    #     update_data["project_manager"] 
+
     for key, value in update_data.items():
         setattr(project, key, value)  # Update only changed fields
 
