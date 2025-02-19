@@ -148,7 +148,16 @@ def load_project_tasks(
     query = db.query(Task)
 
     for task in query.all():
-        print("before db filters: ", task.name, "parent_id: ", task.parent_task_id, "project_id: ", task.project_id, "assigned_to: ", task.assigned_to)
+        print(
+            "before db filters: ",
+            task.name,
+            "parent_id: ",
+            task.parent_task_id,
+            "project_id: ",
+            task.project_id,
+            "assigned_to: ",
+            task.assigned_to,
+        )
 
     if account_id and project_id:
         # If the project specified happens to be managed by the employee, return all tasks in the project
@@ -158,11 +167,7 @@ def load_project_tasks(
             .filter(Project.project_manager == account_id)
             .all()
         ]:
-            query = (
-                query.filter(Task.project_id == project_id)
-                # .group_by(Task.parent_task_id)
-                # .order_by(Task.order)
-            )
+            query = query.filter(Task.project_id == project_id)
 
         # If the account is not a project manager, check if the account is assigned to any tasks
         else:
@@ -170,39 +175,41 @@ def load_project_tasks(
                 db.query(Task)
                 .filter(Task.project_id == project_id)
                 .filter(Task.assigned_to == account_id)
-                # .order_by(Task.order)
             )
 
     elif account_id and not project_id:
-        query = (
-            query.filter(Task.assigned_to == account_id)
-            # .group_by(Task.project_id)
-            # .group_by(Task.parent_task_id)
-            # .order_by(Task.order)
-        )
+        query = query.filter(Task.assigned_to == account_id)
 
     elif not account_id and project_id:
-        query = (
-            query.filter(Task.project_id == project_id)
-            # .order_by(Task.order)
-        )
-
-    else:
-        query = (
-            query
-            # .group_by(Task.project_id)
-            # .order_by(Task.order)
-        )
+        query = query.filter(Task.project_id == project_id)
 
     for task in query.all():
-        print("during db filters: ", task.name, "parent_id: ", task.parent_task_id, "project_id: ", task.project_id, "assigned_to: ", task.assigned_to)
+        print(
+            "during db filters: ",
+            task.name,
+            "parent_id: ",
+            task.parent_task_id,
+            "project_id: ",
+            task.project_id,
+            "assigned_to: ",
+            task.assigned_to,
+        )
 
     query = query.order_by(Task.project_id, Task.parent_task_id, Task.order)
 
     tasks = query.all()
 
     for task in tasks:
-        print("after db filters: ", task.name, "parent_id: ", task.parent_task_id, "project_id: ", task.project_id, "assigned_to: ", task.assigned_to)
+        print(
+            "after db filters: ",
+            task.name,
+            "parent_id: ",
+            task.parent_task_id,
+            "project_id: ",
+            task.project_id,
+            "assigned_to: ",
+            task.assigned_to,
+        )
 
     if account_id and project_id:
         # Order the project based on the accounts role in the project.
