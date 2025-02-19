@@ -49,6 +49,7 @@ class Account(Base):
 
         efficiency_score (float): Efficiency score of this user.
         tasks (List(Task)): List of tasks assigned to this Account.
+        work_hours (List[Dict[str, str]]): List of work hours for each day of the week.
     """
 
     __tablename__ = "accounts"
@@ -73,7 +74,6 @@ class Account(Base):
             return False
         return any(account.manager_id == self.id for account in self.company.accounts)
 
-
     account_created = Column(
         DateTime, default=datetime.now(timezone.utc), nullable=False
     )
@@ -86,6 +86,16 @@ class Account(Base):
     tasks = relationship(
         "Task", secondary="task_account_association", back_populates="accounts"
     )
+
+    work_hours = Column(String, nullable=True, default=str([
+        {"day": "Monday", "start": "", "end": ""},
+        {"day": "Tuesday", "start": "", "end": ""},
+        {"day": "Wednesday", "start": "", "end": ""},
+        {"day": "Thursday", "start": "", "end": ""},
+        {"day": "Friday", "start": "", "end": ""},
+        {"day": "Saturday", "start": "", "end": ""},
+        {"day": "Sunday", "start": "", "end": ""}
+    ]))
 
 
 class Task(Base):

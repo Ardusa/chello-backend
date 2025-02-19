@@ -147,18 +147,6 @@ def load_project_tasks(
 
     query = db.query(Task)
 
-    for task in query.all():
-        print(
-            "before db filters: ",
-            task.name,
-            "parent_id: ",
-            task.parent_task_id,
-            "project_id: ",
-            task.project_id,
-            "assigned_to: ",
-            task.assigned_to,
-        )
-
     if account_id and project_id:
         # If the project specified happens to be managed by the employee, return all tasks in the project
         if project_id in [
@@ -183,33 +171,9 @@ def load_project_tasks(
     elif not account_id and project_id:
         query = query.filter(Task.project_id == project_id)
 
-    for task in query.all():
-        print(
-            "during db filters: ",
-            task.name,
-            "parent_id: ",
-            task.parent_task_id,
-            "project_id: ",
-            task.project_id,
-            "assigned_to: ",
-            task.assigned_to,
-        )
-
     query = query.order_by(Task.project_id, Task.parent_task_id, Task.order)
 
     tasks = query.all()
-
-    for task in tasks:
-        print(
-            "after db filters: ",
-            task.name,
-            "parent_id: ",
-            task.parent_task_id,
-            "project_id: ",
-            task.project_id,
-            "assigned_to: ",
-            task.assigned_to,
-        )
 
     if account_id and project_id:
         # Order the project based on the accounts role in the project.
