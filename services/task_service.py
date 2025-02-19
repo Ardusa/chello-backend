@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from typing import Optional
 import uuid
+
 from models import Task, Project
 from sqlalchemy.orm import Session
 from fastapi import Depends
@@ -15,29 +16,29 @@ def create_task(
     db: Session = Depends(get_db),
 ):
     """
-    Create a new task in the database. The task must be assigned to a project. 
+    Create a new task in the database. The task must be assigned to a project.
     """
     new_task = Task(
         name=task.name,
         description=task.description,
         order=task.order,
     )
-    
+
     # load_project(project_id=project_id, db=db)
     project_id = uuid.UUID(task.project_id)
     from .project_service import load_project
+
     load_project(project_id=project_id, db=db)
     new_task.project_id = project_id
-    
+
     assigned_to_id = uuid.UUID(task.assigned_to)
     load_account(account_id=assigned_to_id, db=db)
     new_task.assigned_to = assigned_to_id
-    
+
     if task.parent_task_id:
         parent_task_id = uuid.UUID(task.parent_task_id)
         load_task(task_id=parent_task_id, db=db)
         new_task.parent_task_id = parent_task_id
-    
 
     db.add(new_task)
     db.commit()
@@ -53,23 +54,73 @@ def create_task(
     return new_task
 
 
-def load_task(task_id: Optional[uuid.UUID] = None, task_id_str: Optional[str] = None, db: Session = Depends(get_db)) -> Task:
+def load_task(
+    task_id: Optional[uuid.UUID] = None,
+    task_id_str: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> Task:
     """
     This function is used to load a task from the database. It will throw an error if the query returns no results.
     """
-    
+
     if task_id_str:
         task_id = uuid.UUID(task_id_str)
-        
+
     query = db.query(Task)
-    
+
     if task_id:
         query = query.filter(Task.id == task_id).first()
-        
+
     if not query or not task_id:
         raise ValueError("Task not found: ", task_id)
-    
+
     return query
+
+
+# Code for creating the dictionary
+def build_task_dict(
+    project: OrderedDict[uuid.UUID, OrderedDict[uuid.UUID, any]], task: Task
+):
+    """Recursively build an ordered dictionary of tasks to their subtasks."""
+
+    def sort_recursive_dict(d: OrderedDict):
+        """Recursively sort an OrderedDict by the 'order' attribute of the keys."""
+        sorted_dict = OrderedDict()
+        for key, value in sorted(
+            d.items(),
+            key=lambda item: item[1].order if isinstance(item[1], Task) else 0,
+        ):
+            if isinstance(value, OrderedDict):
+                sorted_dict[key] = sort_recursive_dict(value)
+            else:
+                sorted_dict[key] = value
+        return sorted_dict
+
+    if not task.parent_task_id:
+        project[task.id] = OrderedDict()
+
+    else:
+
+        def recursive_insert(project, task):
+            for id, value in project.items():
+                if task.parent_task_id == id:
+                    if isinstance(value, OrderedDict):
+                        value[task.id] = OrderedDict()
+                        return True
+                elif isinstance(value, OrderedDict):
+                    if recursive_insert(value, task):
+                        return True
+            return False
+
+        if not recursive_insert(project, task):
+            # Add the parent task to the project dictionary if not found
+            project[task.parent_task_id] = OrderedDict()
+            project[task.parent_task_id][task.id] = OrderedDict()
+
+    # ! Does not work
+
+    # sort_recursive_dict(project)
+    return project
 
 
 def load_project_tasks(
@@ -96,15 +147,22 @@ def load_project_tasks(
 
     query = db.query(Task)
 
+    for task in query.all():
+        print("before db filters: ", task.name, "parent_id: ", task.parent_task_id, "project_id: ", task.project_id, "assigned_to: ", task.assigned_to)
+
     if account_id and project_id:
-        # If the project specified happens to be managed by the eployee, return all tasks in the project
+        # If the project specified happens to be managed by the employee, return all tasks in the project
         if project_id in [
             pid
             for (pid,) in db.query(Project.id)
             .filter(Project.project_manager == account_id)
             .all()
         ]:
-            query = query.filter(Task.project_id == project_id)
+            query = (
+                query.filter(Task.project_id == project_id)
+                # .group_by(Task.parent_task_id)
+                # .order_by(Task.order)
+            )
 
         # If the account is not a project manager, check if the account is assigned to any tasks
         else:
@@ -112,64 +170,39 @@ def load_project_tasks(
                 db.query(Task)
                 .filter(Task.project_id == project_id)
                 .filter(Task.assigned_to == account_id)
-                .order_by(Task.order)
-                .group_by(Task.project_id)
+                # .order_by(Task.order)
             )
 
     elif account_id and not project_id:
         query = (
             query.filter(Task.assigned_to == account_id)
-            .order_by(Task.order)
-            .group_by(Task.project_id)
+            # .group_by(Task.project_id)
+            # .group_by(Task.parent_task_id)
+            # .order_by(Task.order)
         )
 
     elif not account_id and project_id:
-        query = query.filter(Task.project_id == project_id).order_by(Task.order)
+        query = (
+            query.filter(Task.project_id == project_id)
+            # .order_by(Task.order)
+        )
 
     else:
-        query = query.order_by(Task.order).group_by(Task.project_id)
+        query = (
+            query
+            # .group_by(Task.project_id)
+            # .order_by(Task.order)
+        )
 
-    # Code for creating the dictionary
-    def build_task_dict(
-        project: OrderedDict[uuid.UUID, OrderedDict[uuid.UUID, any]], task: Task
-    ):
-        """Recursively build an ordered dictionary of tasks to their subtasks."""
+    for task in query.all():
+        print("during db filters: ", task.name, "parent_id: ", task.parent_task_id, "project_id: ", task.project_id, "assigned_to: ", task.assigned_to)
 
-        def sort_recursive_dict(d: OrderedDict):
-            """Recursively sort an OrderedDict by the 'order' attribute of the keys."""
-            sorted_dict = OrderedDict()
-            for key, value in sorted(d.items(), key=lambda item: item[1].order):
-                if isinstance(value, OrderedDict):
-                    sorted_dict[key] = sort_recursive_dict(value)
-                else:
-                    sorted_dict[key] = value
-            return sorted_dict
-
-        if not task.parent_task_id:
-            project[task.id] = OrderedDict()
-
-        else:
-            def recursive_insert(project, task):
-                for id, value in project.items():
-                    if task.parent_task_id == id:
-                        if isinstance(value, OrderedDict):
-                            value[task.id] = OrderedDict()
-                            return True
-                    elif isinstance(value, OrderedDict):
-                        if recursive_insert(value, task):
-                            return True
-                return False
-
-            if not recursive_insert(project, task):
-                print("Task not found: ", task.parent_task_id)
-                raise ValueError("Task Parent Not Present")
-
-        # ! Does not work
-        # sort_recursive_dict(project)
-        
-        return project
+    query = query.order_by(Task.project_id, Task.parent_task_id, Task.order)
 
     tasks = query.all()
+
+    for task in tasks:
+        print("after db filters: ", task.name, "parent_id: ", task.parent_task_id, "project_id: ", task.project_id, "assigned_to: ", task.assigned_to)
 
     if account_id and project_id:
         # Order the project based on the accounts role in the project.
@@ -212,6 +245,8 @@ def delete_task(task_id: uuid.UUID, db: Session = Depends(get_db)):
     """
     db.query(Task).filter(Task.parent_task_id == task_id).delete()
     db.query(Task).filter(Task.id == task_id).delete()
-    db.query(task_account_association).filter(task_account_association.c.task_id == task_id).delete()
+    db.query(task_account_association).filter(
+        task_account_association.c.task_id == task_id
+    ).delete()
     db.commit()
     return True
