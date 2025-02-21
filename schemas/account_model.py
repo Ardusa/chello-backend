@@ -20,7 +20,7 @@ class AccountBase(BaseModel):
         account_created (DateTime, optional): Date and time the account was created.
         last_login (DateTime): Date and time the account was last logged into.
         efficiency_score (float): Score indicating the efficiency of the account.
-        work_hours (list): List of work hours for each day of the week.
+        work_hours (list, optional): List of dictionaries for work hours for each day of the week { day, start, end }.
     """
 
     id: UUID
@@ -36,15 +36,7 @@ class AccountBase(BaseModel):
     free_plan: bool
     task_limit: Optional[int]
     efficiency_score: float
-    work_hours: list = [
-        {"day": "Monday", "start": "", "end": ""},
-        {"day": "Tuesday", "start": "", "end": ""},
-        {"day": "Wednesday", "start": "", "end": ""},
-        {"day": "Thursday", "start": "", "end": ""},
-        {"day": "Friday", "start": "", "end": ""},
-        {"day": "Saturday", "start": "", "end": ""},
-        {"day": "Sunday", "start": "", "end": ""},
-    ]
+    work_hours: list[dict]
 
 
 class AccountCreate(BaseModel):
@@ -87,7 +79,7 @@ class AccountResponse(BaseModel):
         account_created (DateTime, optional): Date and time the account was created.
         last_login (DateTime): Date and time the account was last logged into.
         efficiency_score (float): Score indicating the efficiency of the account.
-        work_hours (list): List of work hours for each day of the week.
+        work_hours (list, optional): List of dictionaries for work hours for each day of the week { day, start, end }.
     """
 
     id: UUID
@@ -106,15 +98,7 @@ class AccountResponse(BaseModel):
     last_login: datetime
 
     efficiency_score: float
-    work_hours: list = [
-        {"day": "Monday", "start": "", "end": ""},
-        {"day": "Tuesday", "start": "", "end": ""},
-        {"day": "Wednesday", "start": "", "end": ""},
-        {"day": "Thursday", "start": "", "end": ""},
-        {"day": "Friday", "start": "", "end": ""},
-        {"day": "Saturday", "start": "", "end": ""},
-        {"day": "Sunday", "start": "", "end": ""},
-    ]
+    work_hours: list[dict]
 
     class Config:
         from_attributes = True
@@ -139,7 +123,7 @@ class AccountUpdate(BaseModel):
         last_login (DateTime, optional): Date and time the account was last logged into.
 
         efficiency_score (float, optional): Score indicating the efficiency of the account.
-        work_hours (list, optional): List of work hours for each day of the week.
+        work_hours (list, optional): List of dictionaries for work hours for each day of the week { day, start, end }.
     """
 
     id: Optional[str]
@@ -158,4 +142,4 @@ class AccountUpdate(BaseModel):
     last_login: Optional[datetime]
 
     efficiency_score: Optional[float]
-    work_hours: Optional[list]
+    work_hours: Optional[list[dict]]

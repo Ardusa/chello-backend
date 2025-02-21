@@ -1,3 +1,4 @@
+import json
 from sqlalchemy import (
     Column,
     Double,
@@ -87,15 +88,23 @@ class Account(Base):
         "Task", secondary="task_account_association", back_populates="accounts"
     )
 
-    work_hours = Column(String, nullable=True, default=str([
-        {"day": "Monday", "start": "", "end": ""},
-        {"day": "Tuesday", "start": "", "end": ""},
-        {"day": "Wednesday", "start": "", "end": ""},
-        {"day": "Thursday", "start": "", "end": ""},
-        {"day": "Friday", "start": "", "end": ""},
+    work_hours = Column(String, nullable=True, default=lambda: json.dumps([
+        {"day": "Monday", "start": "09:00", "end": "17:00"},
+        {"day": "Tuesday", "start": "09:00", "end": "17:00"},
+        {"day": "Wednesday", "start": "09:00", "end": "17:00"},
+        {"day": "Thursday", "start": "09:00", "end": "17:00"},
+        {"day": "Friday", "start": "09:00", "end": "17:00"},
         {"day": "Saturday", "start": "", "end": ""},
         {"day": "Sunday", "start": "", "end": ""}
     ]))
+    
+    @property
+    def work_hours_dict(self):
+        return json.loads(self.work_hours)
+
+    @work_hours_dict.setter
+    def work_hours_dict(self, value):
+        self.work_hours = json.dumps(value)
 
 
 class Task(Base):
