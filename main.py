@@ -228,6 +228,7 @@ async def register_account(
 
     try:
         account = create_account(account_data=account_data, db=db)
+        print("account created: ", account.__dict__)
         return account
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error creating account: {str(e)}")

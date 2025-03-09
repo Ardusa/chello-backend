@@ -88,7 +88,7 @@ class Account(Base):
         "Task", secondary="task_account_association", back_populates="accounts"
     )
 
-    work_hours = Column(String, nullable=True, default=lambda: json.dumps([
+    work_hours_str = Column(String, nullable=True, default=lambda: json.dumps([
         {"day": "Monday", "start": "09:00", "end": "17:00"},
         {"day": "Tuesday", "start": "09:00", "end": "17:00"},
         {"day": "Wednesday", "start": "09:00", "end": "17:00"},
@@ -99,12 +99,12 @@ class Account(Base):
     ]))
     
     @property
-    def work_hours_dict(self):
-        return json.loads(self.work_hours)
+    def work_hours(self) -> list[dict]:
+        return json.loads(self.work_hours_str)
 
-    @work_hours_dict.setter
-    def work_hours_dict(self, value):
-        self.work_hours = json.dumps(value)
+    @work_hours.setter
+    def work_hours(self, value: list[dict]):
+        self.work_hours_str = json.dumps(value)
 
 
 class Task(Base):
