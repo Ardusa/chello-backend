@@ -42,8 +42,10 @@ class CompanyResponse(CompanyBase):
     Attributes:
         id (UUID): Unique identifier for the company, primary key.
         name (str): Name of the company.
-        founding_date (str): Date the company was founded.
+        founding_date (datetime): Date the company was founded.
         founding_member (UUID): Foreign key referencing the founding member of the company.
+        task_limit (int): Maximum number of tasks allowed in the company.
+        logo (str, optional): base64 image of the company logo.
     """
 
     class Config:
